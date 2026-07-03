@@ -1,0 +1,24 @@
+# Dependencias de paquetes
+node_modules/
+wms_backend/node_modules/
+wms_frontend/node_modules/
+
+# Expo y compilaciones
+.expo/
+wms_frontend/.expo/
+dist/
+wms_frontend/dist/
+
+# Archivos de entorno y credenciales (Seguridad)
+.env
+wms_backend/.env
+wms_frontend/.env
+
+# Logs y caches temporales
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache
+.DS_Store
+Thumbs.db
