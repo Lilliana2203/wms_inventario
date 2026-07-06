@@ -18,15 +18,25 @@ import { apiCall } from '../services/api';
 
 const ARTICLE_IDS: { [key: string]: number } = {
   'Taladros': 1,
+  'Taladros DeWalt 20V Max': 1,
   'Servicios Sanitarios': 2,
+  'Servicios Sanitarios American Standard': 2,
   'Sierra': 3,
+  'Sierra Circular Makita 7-1/4': 3,
   'Puertas': 4,
+  'Puertas de Madera KanForm': 4,
   'Martillo de Impacto': 5,
+  'Martillo de Impacto Bosch Professional': 5,
   'Caja de herramientas': 6,
+  'Caja de herramientas Stanley de 19 pulgadas': 6,
   'Ventiladores': 7,
+  'Ventiladores Industriales Lasko 20': 7,
   'Caladoras': 8,
+  'Caladoras Black+Decker de Velocidad Variable': 8,
   'Esmeril': 9,
-  'Ligadora Orbital': 10
+  'Esmeril Angular Milwaukee de 4-1/2': 9,
+  'Ligadora Orbital': 10,
+  'Lijadora Orbital Truper de 5 pulgadas': 10
 };
 
 interface RackPosition {

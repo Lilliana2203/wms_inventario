@@ -285,11 +285,28 @@ exports.reabastecer = async (req, res, next) => {
     }
     const article = articles[0];
 
-    // Find Altura positions (pisos 4/5) to subtract from
-    const [alturaPositions] = await connection.query(
-      'SELECT id, rack_nombre, piso, cantidad_actual FROM posiciones_rack WHERE articulo_id = ? AND tipo = "Altura" AND piso IN (4, 5) FOR UPDATE',
-      [articulo_id]
+    // Find Altura positions (pisos 4/5) to subtract from, prioritizing the same rack
+    let [alturaPositions] = await connection.query(
+      'SELECT id, rack_nombre, piso, cantidad_actual FROM posiciones_rack WHERE articulo_id = ? AND tipo = "Altura" AND rack_nombre = ? AND piso IN (4, 5) FOR UPDATE',
+      [articulo_id, targetPos.rack_nombre]
     );
+
+    // Fallback: If no Altura position is found in the same rack, search in any rack
+    if (alturaPositions.length === 0) {
+      const [allPositions] = await connection.query(
+        'SELECT id, rack_nombre, piso, cantidad_actual FROM posiciones_rack WHERE articulo_id = ? AND tipo = "Altura" AND piso IN (4, 5) FOR UPDATE',
+        [articulo_id]
+      );
+      alturaPositions = allPositions;
+    }
+
+    // Security check: If no Altura position exists at all for this article
+    if (alturaPositions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se encontró stock en Altura para este artículo'
+      });
+    }
 
     const totalAlturaStock = alturaPositions.reduce((sum, pos) => sum + pos.cantidad_actual, 0);
     if (totalAlturaStock < qty) {
