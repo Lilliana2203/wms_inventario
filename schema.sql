@@ -106,30 +106,20 @@ INSERT INTO `roles` (`id`, `nombre`) VALUES (4, 'Inventario');
 INSERT INTO `roles` (`id`, `nombre`) VALUES (3, 'Montacarguista');
 
 -- =======================================================
--- SEEDING USUARIOS (Passwords SHA256 hashed)
+-- SEEDING USUARIOS (Passwords Bcrypt encrypted)
 -- =======================================================
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (1, 'Juan Perez', 'juanp@gmail.com', 'df86714fc534e90b5ffa0726164516b16f207e7fb20a3b823be218c26c789f03', 4);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (2, 'Melisaa Porras', 'melissap@gmail.com', 'bcc4689cae564cb82bd6483ffb124bdc982e7695dfbd31cacf1a6de704e38d45', 4);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (3, 'Michael Salas', 'michaels@gmail.com', '5c68fbfbf9711983beba73a2ad63ef5c06d42f12c9e3c02cf3e42d124f0072b1', 3);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (4, 'Manuel Ugarte', 'manuelu@gmail.com', '437450f6101fc7dc494240c694dcdb52e94a41e94aa33d8a0afcb37b015609f7', 2);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (5, 'Sandra Lopez', 'sandral@gmail.com', '745b87d481e9c5f9d6a33af522718ac42cca5c1b7accbc354abc0025c01111ea', 2);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (6, 'Jordan Carvajal', 'jordanc@gmail.com', '16713b3e71dd8ada80c659d8a8dc1858fdd30cca7ad6b336d24c61b1c531a357', 2);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (7, 'Susana Lopez', 'susanal@gmail.com', 'e76fe3820004a9c06608eeeadb7a35a8f6c3121883b034dabc132db2671b92e9', 1);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (8, 'Fanny Quesada', 'fannyq@gmail.com', 'eb036aae8f2392003b16c3ed98c92f064e9ff015576a8b64d63e9141d24f71db', 1);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (9, 'Hector Madrigal', 'hectorm@gmail.com', 'd5210db6a55cb7f0dfed224dd5e81a29f5fd4055c64f8e38c5630823a826c1d0', 1);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (10, 'Marco Ulate', 'marcou@gmail.com', 'feb980441f4b26c7557e9c62689b165b43c0312faad8def13d37b0539502a4fe', 1);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (11, 'Test Client', 'testclient@gmail.com', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 1);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (12, 'Prueba Cliente', 'pruebac@gmail.com', 'bf824796f15cd2ded59938034037d3a337b420e3c7480244899642ded9d578c5', 1);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (13, 'Maria Gomez', 'mariag@gmail.com', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 1);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (14, 'Test User', 'test@test.com', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 1);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (15, 'Prueba Proyecto', 'pruebap@gmail.com', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 1);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (17, 'Erick Petro', 'erickp@gmail.com', '86c7d9797ff028e5200399506bdd4a24c6d7328abd2df1d78b01097eb14ba807', 5);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (18, 'Carlos Lopez', 'test_emp_1782873487108@gmail.com', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 3);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (20, 'Test Deletion', 'tdelete@gmail.com', 'ef92b778bafe771e89245b89ecbc08a44a4e166c06659911881f383d4473e94f', 2);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (21, 'Pedro Alvarado', 'pedroa@gmail.com', '86c7d9797ff028e5200399506bdd4a24c6d7328abd2df1d78b01097eb14ba807', 3);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (22, 'Usuario Prueba', 'testlogin@gmail.com', '60a19b4cbeaa530bc1ed49ab40c58d90015ce59571403589bf71bca960c939cc', 1);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (24, 'Prueba creacion', 'pruebacc@gmail.com', '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', 4);
-INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (25, 'prueba eliminar', 'pruebae@prueba.com', '8bb0cf6eb9b17d0f7d22b456f121257dc1254e1f01665370476383ea776df414', 4);
+INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (1, 'Juan Perez', 'juanp@gmail.com', '$2b$10$H5bp0g0y4.vX.WGtElUB4u0RH7Q71A6IxSCbmo6OWVObQXcAM56x.', 4);
+INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (2, 'Melisaa Porras', 'melissap@gmail.com', '$2b$10$IsqoIMwxKG9CIG8jwZQyuODbAoN2bwyld3x0rfURRTGU54sZFpNYi', 4);
+INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (3, 'Michael Salas', 'michaels@gmail.com', '$2b$10$NzmQB7VQoIM0d/63U55mDu.q0VJHH6DHM4ptmcX8DeqUNjdrytu7.', 3);
+INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (4, 'Manuel Ugarte', 'manuelu@gmail.com', '$2b$10$eKKeLRxBETo4K.hhJjc7vuv0Sh4KQpCX5WpzY29lYuR3L7AqSeNyu', 2);
+INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (5, 'Sandra Lopez', 'sandral@gmail.com', '$2b$10$qNOfNJPWYUJV1kQVXik6lenSHzLqvPMY4RPV6qF1qcnnIYVtZ6n7e', 2);
+INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (6, 'Jordan Carvajal', 'jordanc@gmail.com', '$2b$10$5LLEb4lFu6ZTfKwjCYyo6u1FK3mVHOFpbp4ovozaE44UhhdSd.MoS', 2);
+INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (7, 'Susana Lopez', 'susanal@gmail.com', '$2b$10$Gu2rqnhaxSFPI.8.QbO1wuhpIuy1HRmwc3Ah8t0p/7AruR47d87Sa', 1);
+INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (8, 'Fanny Quesada', 'fannyq@gmail.com', '$2b$10$N3Zy4K4Nh3UVvbpZp92wTOO07CwqCskoNHDJcZvSvvSQGgJ8/muX6', 1);
+INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (9, 'Hector Madrigal', 'hectorm@gmail.com', '$2b$10$RPRLWnurHzcwxX26hcf6cuV/9TegE5gIDEi6wOZwdoaYU6Q7e92lO', 1);
+INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (10, 'Marco Ulate', 'marcou@gmail.com', '$2b$10$MDS/TC4hExjcidc0sjglNeddW/BoIhDxNx3ieJcI5HBB.vsnue26y', 1);
+INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (11, 'Prueba Cliente', 'pruebac@gmail.com', '$2b$10$zWKdW3aCXzx8H32BZkp7LeUI9FICIYo3D6wfeZUuIe9vW.lVCq5qW', 1);
+INSERT INTO `usuarios` (`id`, `nombre`, `email`, `password`, `rol_id`) VALUES (12, 'Erick Petro', 'erickp@gmail.com', '$2b$10$abvg9clOmPKBFGNi3sDIdOvgN3jUAXGIXe9MfaMTq83pdEM/ceGsa', 5);
 
 -- =======================================================
 -- SEEDING ARTICULOS (Corrigiendo precios e imagen_url)

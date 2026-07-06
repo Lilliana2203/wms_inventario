@@ -8,7 +8,8 @@ import {
   SafeAreaView,
   StatusBar,
   TouchableOpacity,
-  RefreshControl
+  RefreshControl,
+  ScrollView
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { apiCall } from '../services/api';

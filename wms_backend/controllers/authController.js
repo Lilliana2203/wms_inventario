@@ -1,4 +1,4 @@
-const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const pool = require('../db');
 
 exports.login = async (req, res, next) => {
@@ -14,8 +14,8 @@ exports.login = async (req, res, next) => {
 
   try {
     // Agregamos "AND activo = 1" para que usuarios desactivados no puedan entrar
-    const query = 'SELECT * FROM usuarios WHERE email = ? AND password = SHA2(?, 256) AND (activo = 1 OR activo IS NULL)';
-    const result = await pool.query(query, [email.trim().toLowerCase(), password]);
+    const query = 'SELECT * FROM usuarios WHERE email = ? AND (activo = 1 OR activo IS NULL)';
+    const result = await pool.query(query, [email.trim().toLowerCase()]);
     const rows = Array.isArray(result[0]) ? result[0] : result;
 
     if (!rows || rows.length === 0) {
@@ -26,6 +26,13 @@ exports.login = async (req, res, next) => {
     }
 
     const user = rows[0];
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+      return res.status(401).json({
+        success: false,
+        message: 'Credenciales de inicio de sesión incorrectas o usuario inactivo'
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -66,11 +73,12 @@ exports.registerCliente = async (req, res, next) => {
       });
     }
 
+    const hashedPassword = await bcrypt.hash(password, 10);
     const insertQuery = `
       INSERT INTO usuarios (nombre, email, password, rol_id, activo)
-      VALUES (?, ?, SHA2(?, 256), 1, 1)
+      VALUES (?, ?, ?, 1, 1)
     `;
-    const [result] = await pool.query(insertQuery, [nombre.trim(), email.trim().toLowerCase(), password]);
+    const [result] = await pool.query(insertQuery, [nombre.trim(), email.trim().toLowerCase(), hashedPassword]);
 
     return res.status(201).json({
       success: true,

@@ -1,4 +1,5 @@
 const pool = require('../db');
+const bcrypt = require('bcryptjs');
 
 // Helper to verify user existence and role
 async function verifyUserRole(connection, usuario_id, allowedRoles) {
@@ -1112,15 +1113,16 @@ exports.crearUsuario = async (req, res, next) => {
       });
     }
 
+    const hashedPassword = await bcrypt.hash(password, 10);
     // Insert new user (Por defecto se crea activo)
     const insertQuery = `
       INSERT INTO usuarios (nombre, email, password, telefono, rol_id)
-      VALUES (?, ?, SHA2(?, 256), ?, ?)
+      VALUES (?, ?, ?, ?, ?)
     `;
     const [result] = await connection.query(insertQuery, [
       nombre.trim(),
       email.trim().toLowerCase(),
-      password,
+      hashedPassword,
       telefono || '8888-8888',
       rol_id
     ]);

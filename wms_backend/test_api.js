@@ -78,7 +78,7 @@ async function runTests() {
     console.log('\n--- Test 1: Autenticación - Login exitoso ---');
     const loginRes = await makeRequest(`${BASE_URL}/auth/login`, 'POST', {
       email: users.comprador.email,
-      password: 'password123'
+      password: 'Password7*'
     });
     assert(loginRes.status === 200, 'Status should be 200 OK', `Got ${loginRes.status}`);
     assert(loginRes.body.success === true, 'Response success should be true');
