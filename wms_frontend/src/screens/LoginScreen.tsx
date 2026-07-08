@@ -12,13 +12,22 @@ import {
   StatusBar
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import ThemeToggle from '../components/ThemeToggle';
 
 interface LoginScreenProps {
   onNavigateToRegister: () => void;
+  onNavigateToRecovery: () => void;
+  onNavigateToCatalog: () => void;
 }
 
-export default function LoginScreen({ onNavigateToRegister }: LoginScreenProps) {
+export default function LoginScreen({ 
+  onNavigateToRegister, 
+  onNavigateToRecovery, 
+  onNavigateToCatalog 
+}: LoginScreenProps) {
   const { login, error, clearError } = useAuth();
+  const { colors } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -54,13 +63,20 @@ export default function LoginScreen({ onNavigateToRegister }: LoginScreenProps) 
   };
 
   const activeError = localError || error;
+  const styles = getStyles(colors);
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <StatusBar barStyle="light-content" backgroundColor="#0B132B" />
+      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+      
+      {/* Top Floating Theme Switch */}
+      <View style={styles.topBar}>
+        <ThemeToggle />
+      </View>
+
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         
         {/* Header Section */}
@@ -88,7 +104,7 @@ export default function LoginScreen({ onNavigateToRegister }: LoginScreenProps) 
             <TextInput
               style={styles.input}
               placeholder="ejemplo@correo.com"
-              placeholderTextColor="#5C6B73"
+              placeholderTextColor={colors.textSecondary}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
@@ -109,7 +125,7 @@ export default function LoginScreen({ onNavigateToRegister }: LoginScreenProps) 
               <TextInput
                 style={styles.passwordInput}
                 placeholder="Tu contraseña"
-                placeholderTextColor="#5C6B73"
+                placeholderTextColor={colors.textSecondary}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -133,6 +149,15 @@ export default function LoginScreen({ onNavigateToRegister }: LoginScreenProps) 
             </View>
           </View>
 
+          {/* Recovery Link */}
+          <TouchableOpacity 
+            onPress={onNavigateToRecovery} 
+            style={styles.recoveryBtn}
+            disabled={isSubmitting}
+          >
+            <Text style={styles.recoveryLink}>¿Olvidaste tu contraseña?</Text>
+          </TouchableOpacity>
+
           {/* Submit Button */}
           <TouchableOpacity
             style={[styles.button, isSubmitting && styles.buttonDisabled]}
@@ -155,6 +180,15 @@ export default function LoginScreen({ onNavigateToRegister }: LoginScreenProps) 
             </TouchableOpacity>
           </View>
 
+          {/* Navigation to Public Catalog */}
+          <View style={[styles.footerRow, { marginTop: 16 }]}>
+            <TouchableOpacity onPress={onNavigateToCatalog} disabled={isSubmitting}>
+              <Text style={[styles.footerLink, { color: colors.warning }]}>
+                ← Ver Catálogo Público
+              </Text>
+            </TouchableOpacity>
+          </View>
+
         </View>
 
         {/* Footer info */}
@@ -167,10 +201,16 @@ export default function LoginScreen({ onNavigateToRegister }: LoginScreenProps) 
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B132B',
+    backgroundColor: colors.background,
+  },
+  topBar: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    zIndex: 10,
   },
   scrollContainer: {
     flexGrow: 1,
@@ -182,12 +222,12 @@ const styles = StyleSheet.create({
     marginBottom: 36,
   },
   logoBadge: {
-    backgroundColor: '#3A86C8',
+    backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: '#3A86C8',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -202,17 +242,17 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 26,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 15,
-    color: '#5C6B73',
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   card: {
-    backgroundColor: '#1C2541',
+    backgroundColor: colors.card,
     borderRadius: 24,
     padding: 24,
     shadowColor: '#000',
@@ -221,18 +261,18 @@ const styles = StyleSheet.create({
     shadowRadius: 15,
     elevation: 10,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.border,
   },
   errorContainer: {
-    backgroundColor: '#FF336620',
-    borderColor: '#FF336650',
+    backgroundColor: colors.danger + '20',
+    borderColor: colors.danger + '50',
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
     marginBottom: 20,
   },
   errorText: {
-    color: '#FF3366',
+    color: colors.danger,
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
@@ -243,33 +283,33 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#3A86C8',
+    color: colors.primary,
     marginBottom: 8,
   },
   input: {
     height: 52,
-    backgroundColor: '#0B132B',
+    backgroundColor: colors.inputBg,
     borderRadius: 12,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#FFFFFF',
+    color: colors.inputText,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.inputBorder,
   },
   passwordWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0B132B',
+    backgroundColor: colors.inputBg,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.inputBorder,
   },
   passwordInput: {
     flex: 1,
     height: 52,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#FFFFFF',
+    color: colors.inputText,
   },
   eyeButton: {
     paddingHorizontal: 16,
@@ -277,25 +317,35 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   eyeButtonText: {
-    color: '#3A86C8',
+    color: colors.primary,
     fontWeight: '600',
     fontSize: 13,
   },
+  recoveryBtn: {
+    alignSelf: 'flex-end',
+    marginTop: -10,
+    marginBottom: 15,
+  },
+  recoveryLink: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
   button: {
     height: 52,
-    backgroundColor: '#3A86C8',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 12,
-    shadowColor: '#3A86C8',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
   buttonDisabled: {
-    backgroundColor: '#5C6B73',
+    backgroundColor: colors.textSecondary,
   },
   buttonText: {
     color: '#FFFFFF',
@@ -311,17 +361,17 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 14,
-    color: '#5C6B73',
+    color: colors.textSecondary,
   },
   footerLink: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#3A86C8',
+    color: colors.primary,
   },
   copyrightText: {
     textAlign: 'center',
     fontSize: 12,
-    color: '#5C6B73',
+    color: colors.textSecondary,
     marginTop: 36,
   },
 });

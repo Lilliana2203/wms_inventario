@@ -17,7 +17,9 @@ import {
   Image
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import { apiCall } from '../services/api';
+import ThemeToggle from '../components/ThemeToggle';
 
 interface CatalogArticle {
   id: number;
@@ -35,22 +37,42 @@ interface CartItem {
   precio_unitario: number;
 }
 
-export default function ComprasScreen() {
+interface ComprasScreenProps {
+  onNavigateToLogin?: () => void;
+}
+
+export default function ComprasScreen({ onNavigateToLogin }: ComprasScreenProps) {
   const { user, logout } = useAuth();
+  const { colors } = useTheme();
   
   // Catalog articles state
   const [catalogList, setCatalogList] = useState<CatalogArticle[]>([]);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
+
+  // Detail Modal state
+  const [selectedArticleForDetail, setSelectedArticleForDetail] = useState<CatalogArticle | null>(null);
+  const [detailQuantity, setDetailQuantity] = useState(1);
 
   // Contact & Delivery states
   const [telefonoContacto, setTelefonoContacto] = useState('');
   const [tipoEntrega, setTipoEntrega] = useState<'Retiro en Lugar' | 'Express'>('Retiro en Lugar');
   const [isDeliveryDropdownOpen, setIsDeliveryDropdownOpen] = useState(false);
   const [direccionEnvio, setDireccionEnvio] = useState('');
+  const [enGAM, setEnGAM] = useState(true); // Default to true for GAM
+  const [provincia, setProvincia] = useState('San José'); // Default GAM province
+  const [isProvinceDropdownOpen, setIsProvinceDropdownOpen] = useState(false);
 
   // Cart state
   const [cart, setCart] = useState<CartItem[]>([]);
   
+  // Payment Modal state
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'paypal'>('card');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [paypalEmail, setPaypalEmail] = useState('');
+
   // Submission & Feedback states
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -75,9 +97,25 @@ export default function ComprasScreen() {
     setSuccessMsg(null);
   }, []);
 
-  const handleDirectAddToCart = (item: CatalogArticle) => {
+  const showSecurityAlert = () => {
+    Alert.alert(
+      "Por motivos de seguridad",
+      "Debes registrarte o iniciar sesión en la web antes de poder realizar una compra",
+      [
+        { text: "Cancelar", style: "cancel" },
+        ...(onNavigateToLogin ? [{ text: "Iniciar Sesión", onPress: onNavigateToLogin }] : [])
+      ]
+    );
+  };
+
+  const handleAddQuantityToCart = (item: CatalogArticle, quantity: number) => {
     setErrorMsg(null);
     setSuccessMsg(null);
+
+    if (!user) {
+      showSecurityAlert();
+      return;
+    }
 
     const price = parseFloat(item.precio_base) || 0;
 
@@ -85,7 +123,7 @@ export default function ComprasScreen() {
       const existingIndex = prevCart.findIndex((c) => c.articulo_id === item.id);
       if (existingIndex > -1) {
         const newCart = [...prevCart];
-        newCart[existingIndex].cantidad += 1;
+        newCart[existingIndex].cantidad += quantity;
         return newCart;
       } else {
         return [
@@ -94,15 +132,24 @@ export default function ComprasScreen() {
             cart_id: Date.now().toString() + Math.random().toString(),
             articulo_id: item.id,
             nombre: item.nombre,
-            cantidad: 1,
+            cantidad: quantity,
             precio_unitario: price
           }
         ];
       }
     });
 
-    setSuccessMsg(`¡${item.nombre} agregado al carrito!`);
+    setSuccessMsg(`¡${quantity}x ${item.nombre} agregado al carrito!`);
     setTimeout(() => setSuccessMsg(null), 2500);
+  };
+
+  const handleUpdateCartQty = (cartId: string, newQty: number) => {
+    if (newQty <= 0) return;
+    setCart((prevCart) =>
+      prevCart.map((item) =>
+        item.cart_id === cartId ? { ...item, cantidad: newQty } : item
+      )
+    );
   };
 
   const handleRemoveFromCart = (cartId: string) => {
@@ -114,11 +161,24 @@ export default function ComprasScreen() {
   // Calculations for Costa Rican colon (₡) and 13% IVA
   const subtotal = cart.reduce((sum, item) => sum + (item.precio_unitario * item.cantidad), 0);
   const impuesto = subtotal * 0.13;
-  const total = subtotal + impuesto;
+  
+  // Real-time Shipping Cost Express calculations for Costa Rica con IVA Incluido
+  let costoEnvio = 0;
+  if (tipoEntrega === 'Express') {
+    costoEnvio = enGAM ? 5000 : 7000; // Tarifa base GAM o fuera de GAM
+    const montoParaBeneficio = subtotal + impuesto;
+    if (enGAM && montoParaBeneficio >= 100000) {
+      costoEnvio = 0;
+    } else if (!enGAM && montoParaBeneficio >= 150000) {
+      costoEnvio = 0;
+    }
+  }
+
+  const total = subtotal + impuesto + costoEnvio;
 
   // Format currency helpers
   const formatCRC = (val: number) => {
-    return `₡${val.toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `₡${val.toLocaleString('es-CR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
   };
 
   const formatCRCWithIva = (val: string | number) => {
@@ -128,9 +188,15 @@ export default function ComprasScreen() {
     return `₡${formatted} con IVA`;
   };
 
-  const handleEmitOrder = async () => {
+  // Open simulated checkout payment form
+  const handleOpenCheckout = () => {
     setErrorMsg(null);
     setSuccessMsg(null);
+
+    if (!user) {
+      showSecurityAlert();
+      return;
+    }
 
     if (cart.length === 0) {
       setErrorMsg('El carrito está vacío');
@@ -147,41 +213,64 @@ export default function ComprasScreen() {
       return;
     }
 
+    setIsPaymentModalOpen(true);
+  };
+
+  // Confirm Purchase (POST to backend)
+  const handleConfirmPurchase = async () => {
+    setErrorMsg(null);
+    
+    // Simple simulated payment validations
+    if (paymentMethod === 'card') {
+      if (!cardNumber.trim() || !cardExpiry.trim() || !cardCvv.trim()) {
+        Alert.alert("Campos faltantes", "Por favor ingrese todos los datos de su tarjeta");
+        return;
+      }
+    } else {
+      if (!paypalEmail.trim()) {
+        Alert.alert("Campos faltantes", "Por favor ingrese su correo electrónico de PayPal");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
+    setIsPaymentModalOpen(false); // Close payment modal to show transaction alert
     try {
       const itemsPayload = cart.map((item) => ({
         articulo_id: item.articulo_id,
-        cantidad: item.cantidad
+        cantidad: item.cantidad,
+        precio_unitario: item.precio_unitario
       }));
 
-      const response = await apiCall<any>('/inventario/comprar', 'POST', {
-        usuario_id: user?.id,
-        items: itemsPayload,
-        tipo_entrega: tipoEntrega,
+      // Post to creating client order endpoint
+      const response = await apiCall<any>('/inventario/crear-pedido', 'POST', {
+        cliente_id: user?.id,
+        productos: itemsPayload,
+        tipo_entrega: tipoEntrega === 'Express' ? 'express' : 'sucursal',
         telefono_contacto: telefonoContacto.trim(),
-        direccion_envio: tipoEntrega === 'Express' ? direccionEnvio.trim() : null
+        direccion_envio: tipoEntrega === 'Express' ? `${provincia}, ${direccionEnvio.trim()}` : null,
+        enGAM: enGAM
       });
 
       if (response.success) {
-        if (tipoEntrega === 'Retiro en Lugar') {
-          Alert.alert(
-            "ℹ️ Pedido Registrado",
-            "Tu pedido ha sido registrado. Podrás recogerlo en la zona de recolecta de la sucursal una vez esté listo.",
-            [{ text: "Entendido" }]
-          );
-        } else {
-          Alert.alert(
-            "🚀 Pedido en Camino",
-            "Tu pedido Express ha sido registrado con éxito.",
-            [{ text: "Excelente" }]
-          );
-        }
+        Alert.alert(
+          "🎉 Compra Procesada",
+          tipoEntrega === 'Express' 
+            ? `Pago simulado procesado con éxito.\nSu pedido con ID #${response.pedido_id} ha sido registrado para envío express.`
+            : `Pago simulado procesado con éxito.\nSu pedido con ID #${response.pedido_id} está listo para ser alistado en la sucursal.`,
+          [{ text: "Excelente" }]
+        );
 
         setSuccessMsg(response.message || '¡Compra realizada con éxito!');
         setCart([]);
         setTelefonoContacto('');
         setDireccionEnvio('');
         setTipoEntrega('Retiro en Lugar');
+        setEnGAM(false);
+        setCardNumber('');
+        setCardExpiry('');
+        setCardCvv('');
+        setPaypalEmail('');
       } else {
         setErrorMsg(response.message || 'Error al procesar la compra');
       }
@@ -192,15 +281,32 @@ export default function ComprasScreen() {
     }
   };
 
+  const styles = getStyles(colors);
+
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0B132B" />
+      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
       
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Catálogo de Compras</Text>
-        <TouchableOpacity style={styles.logoutButton} onPress={logout} activeOpacity={0.7}>
-          <Text style={styles.logoutButtonText}>Salir</Text>
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {user ? 'Catálogo de Compras' : 'Catálogo Público'}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <ThemeToggle />
+          {user ? (
+            <TouchableOpacity style={styles.logoutButton} onPress={logout} activeOpacity={0.7}>
+              <Text style={styles.logoutButtonText}>Salir</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={[styles.logoutButton, { backgroundColor: colors.primary + '20', borderColor: colors.primary + '50' }]} 
+              onPress={onNavigateToLogin} 
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.logoutButtonText, { color: colors.primary }]}>Ingresar</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <KeyboardAvoidingView
@@ -209,22 +315,35 @@ export default function ComprasScreen() {
       >
         <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
           
-          <View style={styles.profileCard}>
-            <View style={styles.profileDetails}>
-              <Text style={styles.welcomeText}>Cliente Autorizado</Text>
-              <Text style={styles.userName}>{user?.nombre}</Text>
-              <Text style={styles.userEmail}>{user?.email}</Text>
+          {user ? (
+            <View style={styles.profileCard}>
+              <View style={styles.profileDetails}>
+                <Text style={styles.welcomeText}>Cliente Autorizado</Text>
+                <Text style={styles.userName}>{user?.nombre}</Text>
+                <Text style={styles.userEmail}>{user?.email}</Text>
+              </View>
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>Cliente</Text>
+              </View>
             </View>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>Cliente</Text>
+          ) : (
+            <View style={styles.profileCard}>
+              <View style={styles.profileDetails}>
+                <Text style={styles.welcomeText}>Modo de Vista Pública</Text>
+                <Text style={styles.userName}>Usuario Invitado</Text>
+                <Text style={styles.userEmail}>Inicie sesión para realizar compras en el WMS</Text>
+              </View>
+              <View style={[styles.badge, { backgroundColor: colors.warning + '20', borderColor: colors.warning + '50' }]}>
+                <Text style={[styles.badgeText, { color: colors.warning }]}>Invitado</Text>
+              </View>
             </View>
-          </View>
+          )}
 
           {/* Product Catalog Grid Card */}
           <View style={styles.catalogCard}>
             <Text style={styles.catalogTitle}>Catálogo de Productos</Text>
             <Text style={styles.catalogSubtitle}>
-              Seleccione y agregue herramientas directamente a su carrito de compras.
+              Seleccione una herramienta para ver detalles y agregar al carrito.
             </Text>
 
             {successMsg && (
@@ -241,13 +360,23 @@ export default function ComprasScreen() {
 
             {isLoadingCatalog ? (
               <View style={styles.loaderContainer}>
-                <ActivityIndicator color="#3A86C8" size="large" />
+                <ActivityIndicator color={colors.primary} size="large" />
                 <Text style={styles.loaderText}>Cargando catálogo...</Text>
               </View>
             ) : (
               <View style={styles.gridContainer}>
                 {catalogList.map((item) => (
-                  <View key={item.id} style={styles.productCard}>
+                  <TouchableOpacity 
+                    key={item.id} 
+                    style={styles.productCard}
+                    onPress={() => {
+                      setSelectedArticleForDetail(item);
+                      setDetailQuantity(1);
+                      setErrorMsg(null);
+                      setSuccessMsg(null);
+                    }}
+                    activeOpacity={0.9}
+                  >
                     <Image 
                       source={{ uri: item.imagen_url }} 
                       style={styles.productImage}
@@ -263,16 +392,11 @@ export default function ComprasScreen() {
                       <Text style={styles.productPriceBase}>
                         Base: {formatCRC(parseFloat(item.precio_base))}
                       </Text>
-                      
-                      <TouchableOpacity
-                        style={styles.addProductBtn}
-                        onPress={() => handleDirectAddToCart(item)}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.addProductBtnText}>+ Agregar al Carrito</Text>
-                      </TouchableOpacity>
+                      <View style={styles.detailsIndicator}>
+                        <Text style={styles.detailsIndicatorText}>Ver detalles</Text>
+                      </View>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             )}
@@ -297,10 +421,29 @@ export default function ComprasScreen() {
                   <View key={item.cart_id} style={styles.cartItem}>
                     <View style={styles.cartItemInfo}>
                       <Text style={styles.cartItemName}>{item.nombre}</Text>
-                      <Text style={styles.cartItemQty}>Cantidad: {item.cantidad}</Text>
                       <Text style={styles.cartItemPrice}>Unitario: {formatCRC(item.precio_unitario)}</Text>
                       <Text style={styles.cartItemSubtotal}>Subtotal: {formatCRC(item.precio_unitario * item.cantidad)}</Text>
+                      
+                      {/* Quantity adjuster inside cart */}
+                      <View style={styles.cartQtyRow}>
+                        <TouchableOpacity 
+                          style={styles.qtyChangeBtn}
+                          onPress={() => handleUpdateCartQty(item.cart_id, item.cantidad - 1)}
+                          activeOpacity={0.6}
+                        >
+                          <Text style={styles.qtyChangeBtnText}>-</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.cartQtyText}>{item.cantidad}</Text>
+                        <TouchableOpacity 
+                          style={styles.qtyChangeBtn}
+                          onPress={() => handleUpdateCartQty(item.cart_id, item.cantidad + 1)}
+                          activeOpacity={0.6}
+                        >
+                          <Text style={styles.qtyChangeBtnText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
+                    
                     <TouchableOpacity
                       style={styles.removeBtn}
                       onPress={() => handleRemoveFromCart(item.cart_id)}
@@ -321,7 +464,7 @@ export default function ComprasScreen() {
                   <TextInput
                     style={styles.input}
                     placeholder="Ej. 8888-8888"
-                    placeholderTextColor="#5C6B73"
+                    placeholderTextColor={colors.textSecondary}
                     keyboardType="phone-pad"
                     value={telefonoContacto}
                     onChangeText={(text) => {
@@ -332,7 +475,7 @@ export default function ComprasScreen() {
                   />
                 </View>
 
-                {/* Delivery Method Dropdown */}
+                {/* Delivery Method Selector */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>Método de Entrega</Text>
                   <TouchableOpacity
@@ -350,23 +493,74 @@ export default function ComprasScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {/* Dynamic Shipping Address Input */}
+                {/* Dynamic Shipping Address & GAM Selector */}
                 {tipoEntrega === 'Express' && (
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Dirección de Envío (Obligatorio)</Text>
-                    <TextInput
-                      style={[styles.input, styles.textArea]}
-                      placeholder="Ingrese la dirección completa para el envío Express..."
-                      placeholderTextColor="#5C6B73"
-                      multiline={true}
-                      numberOfLines={3}
-                      value={direccionEnvio}
-                      onChangeText={(text) => {
-                        setDireccionEnvio(text);
-                        setErrorMsg(null);
-                      }}
-                      editable={!isSubmitting}
-                    />
+                  <View style={{ gap: 16 }}>
+                    {/* GAM Toggle Selector */}
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.label}>¿Ubicación de entrega dentro del GAM (Gran Área Metropolitana)?</Text>
+                      <View style={styles.gamSelectorRow}>
+                        <TouchableOpacity
+                          style={[styles.gamBtn, enGAM && styles.gamBtnSelected]}
+                          onPress={() => {
+                            setEnGAM(true);
+                            setProvincia('San José'); // Reset to first GAM province
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.gamBtnText, enGAM && styles.gamBtnTextSelected]}>Sí (GAM)</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.gamBtn, !enGAM && styles.gamBtnSelected]}
+                          onPress={() => {
+                            setEnGAM(false);
+                            setProvincia('Puntarenas'); // Reset to first non-GAM province
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.gamBtnText, !enGAM && styles.gamBtnTextSelected]}>No (Fuera del GAM)</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={styles.gamHelpText}>
+                        * GAM (₡5 000): gratis si la compra total con IVA es de ₡100 000 o más. Fuera del GAM (₡7 000): gratis si la compra total con IVA es de ₡150 000 o más.
+                      </Text>
+                    </View>
+
+                    {/* Province Selector Dropdown */}
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.label}>Provincia de Entrega</Text>
+                      <TouchableOpacity
+                        style={styles.dropdownSelector}
+                        onPress={() => {
+                          setIsProvinceDropdownOpen(true);
+                          setErrorMsg(null);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.dropdownTextSelected}>
+                          {provincia}
+                        </Text>
+                        <Text style={styles.dropdownArrow}>▼</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Shipping Address */}
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.label}>Dirección de Envío (Obligatorio)</Text>
+                      <TextInput
+                        style={[styles.input, styles.textArea]}
+                        placeholder="Provincia, Cantón, Distrito y dirección exacta..."
+                        placeholderTextColor={colors.textSecondary}
+                        multiline={true}
+                        numberOfLines={3}
+                        value={direccionEnvio}
+                        onChangeText={(text) => {
+                          setDireccionEnvio(text);
+                          setErrorMsg(null);
+                        }}
+                        editable={!isSubmitting}
+                      />
+                    </View>
                   </View>
                 )}
 
@@ -380,15 +574,24 @@ export default function ComprasScreen() {
                     <Text style={styles.summaryLabel}>IVA (13%):</Text>
                     <Text style={styles.summaryValue}>{formatCRC(impuesto)}</Text>
                   </View>
+                  {tipoEntrega === 'Express' && (
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Envío Express:</Text>
+                      <Text style={[styles.summaryValue, costoEnvio === 0 && { color: colors.success, fontWeight: 'bold' }]}>
+                        {costoEnvio === 0 ? 'Gratis' : formatCRC(costoEnvio)}
+                      </Text>
+                    </View>
+                  )}
                   <View style={[styles.summaryRow, styles.totalRow]}>
                     <Text style={styles.totalLabel}>TOTAL A PAGAR:</Text>
                     <Text style={styles.totalValue}>{formatCRC(total)}</Text>
                   </View>
                 </View>
 
+                {/* Place Order Trigger */}
                 <TouchableOpacity
                   style={[styles.button, isSubmitting && styles.buttonDisabled]}
-                  onPress={handleEmitOrder}
+                  onPress={handleOpenCheckout}
                   disabled={isSubmitting}
                   activeOpacity={0.8}
                 >
@@ -407,7 +610,89 @@ export default function ComprasScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Delivery Method Selection Dropdown Overlay */}
+      {/* 1. ARTICLE DETAIL MODAL */}
+      {selectedArticleForDetail && (
+        <Modal
+          visible={selectedArticleForDetail !== null}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setSelectedArticleForDetail(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.detailModalContent}>
+              <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+                {/* Close Badge */}
+                <TouchableOpacity 
+                  style={styles.closeDetailBadge}
+                  onPress={() => setSelectedArticleForDetail(null)}
+                >
+                  <Text style={styles.closeDetailBadgeText}>✕</Text>
+                </TouchableOpacity>
+
+                <Image 
+                  source={{ uri: selectedArticleForDetail.imagen_url }} 
+                  style={styles.detailModalImage}
+                  resizeMode="cover"
+                />
+                
+                <Text style={styles.detailModalName}>{selectedArticleForDetail.nombre}</Text>
+                
+                <View style={styles.detailPriceBlock}>
+                  <Text style={styles.detailPriceIva}>
+                    {formatCRCWithIva(selectedArticleForDetail.precio_con_iva)}
+                  </Text>
+                  <Text style={styles.detailPriceBase}>
+                    Precio Base: {formatCRC(parseFloat(selectedArticleForDetail.precio_base))}
+                  </Text>
+                </View>
+
+                <View style={styles.detailsDivider} />
+                
+                <Text style={styles.detailSectionTitle}>Especificaciones del Producto</Text>
+                <Text style={styles.detailDescription}>
+                  Herramienta profesional de alta calidad y rendimiento para trabajos de construcción y mantenimiento. Estructura robusta diseñada para cumplir con las normas de seguridad del WMS.
+                </Text>
+
+                <View style={styles.detailsDivider} />
+
+                {/* Quantity selector */}
+                <Text style={styles.detailSectionTitle}>Cantidad a solicitar</Text>
+                <View style={styles.detailQtySelectorRow}>
+                  <TouchableOpacity 
+                    style={styles.detailQtyBtn}
+                    onPress={() => setDetailQuantity(q => Math.max(1, q - 1))}
+                  >
+                    <Text style={styles.detailQtyBtnText}>-</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.detailQtyText}>{detailQuantity}</Text>
+                  <TouchableOpacity 
+                    style={styles.detailQtyBtn}
+                    onPress={() => setDetailQuantity(q => q + 1)}
+                  >
+                    <Text style={styles.detailQtyBtnText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Add Action inside modal */}
+                <TouchableOpacity
+                  style={styles.detailAddBtn}
+                  onPress={() => {
+                    handleAddQuantityToCart(selectedArticleForDetail, detailQuantity);
+                    setSelectedArticleForDetail(null);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.detailAddBtnText}>
+                    Agregar al Carrito ({formatCRC((parseFloat(selectedArticleForDetail.precio_base) || 0) * detailQuantity)})
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {/* 2. DELIVERY METHOD DROPDOWN OVERLAY */}
       <Modal
         visible={isDeliveryDropdownOpen}
         transparent={true}
@@ -461,14 +746,184 @@ export default function ComprasScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* 4. PROVINCE DROPDOWN OVERLAY */}
+      <Modal
+        visible={isProvinceDropdownOpen}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsProvinceDropdownOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsProvinceDropdownOpen(false)}
+        >
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View style={styles.modalContent} {...{ onClick: (e: any) => e.stopPropagation() }}>
+              <Text style={styles.modalTitle}>Seleccionar Provincia</Text>
+              
+              {(enGAM 
+                ? ['San José', 'Alajuela', 'Cartago', 'Heredia']
+                : ['Puntarenas', 'Guanacaste', 'Limón']
+              ).map((prov) => (
+                <TouchableOpacity
+                  key={prov}
+                  style={[styles.modalItem, provincia === prov && styles.modalItemActive]}
+                  onPress={() => {
+                    setProvincia(prov);
+                    setIsProvinceDropdownOpen(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.modalItemText, provincia === prov && styles.modalItemTextActive]}>
+                    {prov}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+
+              <TouchableOpacity
+                style={styles.closeModalButton}
+                onPress={() => setIsProvinceDropdownOpen(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.closeModalButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableWithoutFeedback>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* 3. SIMULATED PAYMENT MODAL */}
+      <Modal
+        visible={isPaymentModalOpen}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsPaymentModalOpen(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsPaymentModalOpen(false)}
+        >
+          <TouchableWithoutFeedback onPress={() => {}}>
+            <View style={[styles.modalContent, { maxHeight: '90%' }]} {...{ onClick: (e: any) => e.stopPropagation() }}>
+              <Text style={styles.modalTitle}>Simulador de Pago Seguro</Text>
+              <Text style={styles.paymentTotalText}>Total a debitar: {formatCRC(total)}</Text>
+              
+              {/* Payment Tab Selectors */}
+              <View style={styles.paymentTabRow}>
+                <TouchableOpacity
+                  style={[styles.paymentTab, paymentMethod === 'card' && styles.paymentTabSelected]}
+                  onPress={() => setPaymentMethod('card')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.paymentTabText, paymentMethod === 'card' && styles.paymentTabTextSelected]}>
+                    Tarjeta Crédito/Débito
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.paymentTab, paymentMethod === 'paypal' && styles.paymentTabSelected]}
+                  onPress={() => setPaymentMethod('paypal')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.paymentTabText, paymentMethod === 'paypal' && styles.paymentTabTextSelected]}>
+                    PayPal
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {paymentMethod === 'card' ? (
+                /* Card Input fields */
+                <View style={{ gap: 14 }}>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Número de Tarjeta (Simulado)</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="4111 2222 3333 4444"
+                      placeholderTextColor={colors.textSecondary}
+                      keyboardType="numeric"
+                      maxLength={19}
+                      value={cardNumber}
+                      onChangeText={setCardNumber}
+                    />
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={styles.label}>Expiración</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="MM/YY"
+                        placeholderTextColor={colors.textSecondary}
+                        keyboardType="numeric"
+                        maxLength={5}
+                        value={cardExpiry}
+                        onChangeText={setCardExpiry}
+                      />
+                    </View>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                      <Text style={styles.label}>CVV</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="123"
+                        placeholderTextColor={colors.textSecondary}
+                        keyboardType="numeric"
+                        secureTextEntry={true}
+                        maxLength={4}
+                        value={cardCvv}
+                        onChangeText={setCardCvv}
+                      />
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                /* PayPal Input fields */
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Correo de Cuenta PayPal</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="usuario@correo.com"
+                    placeholderTextColor={colors.textSecondary}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    value={paypalEmail}
+                    onChangeText={setPaypalEmail}
+                  />
+                </View>
+              )}
+
+              {/* Action Buttons */}
+              <View style={{ gap: 10, marginTop: 10 }}>
+                <TouchableOpacity
+                  style={styles.payConfirmButton}
+                  onPress={handleConfirmPurchase}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.payConfirmButtonText}>
+                    Confirmar Pago y Compra
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.closeModalButton}
+                  onPress={() => setIsPaymentModalOpen(false)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.closeModalButtonText}>Cancelar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </TouchableOpacity>
+      </Modal>
+
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B132B',
+    backgroundColor: colors.background,
   },
   header: {
     height: 60,
@@ -477,24 +932,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#22333B',
-    backgroundColor: '#1C2541',
+    borderBottomColor: colors.border,
+    backgroundColor: colors.card,
   },
   headerTitle: {
-    color: '#FFFFFF',
+    color: colors.text,
     fontSize: 18,
     fontWeight: 'bold',
   },
   logoutButton: {
-    backgroundColor: '#FF336630',
+    backgroundColor: colors.danger + '20',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#FF336660',
+    borderColor: colors.danger + '40',
+    marginLeft: 10,
   },
   logoutButtonText: {
-    color: '#FF3366',
+    color: colors.danger,
     fontWeight: 'bold',
     fontSize: 13,
   },
@@ -503,63 +959,62 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   profileCard: {
-    backgroundColor: '#1C2541',
+    backgroundColor: colors.card,
     borderRadius: 18,
     padding: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.border,
   },
   profileDetails: {
     flex: 1,
   },
   welcomeText: {
-    color: '#3A86C8',
+    color: colors.primary,
     fontSize: 13,
     fontWeight: '600',
     marginBottom: 4,
   },
   userName: {
-    color: '#FFFFFF',
+    color: colors.text,
     fontSize: 19,
     fontWeight: 'bold',
     marginBottom: 2,
   },
   userEmail: {
-    color: '#5C6B73',
+    color: colors.textSecondary,
     fontSize: 13,
   },
   badge: {
-    backgroundColor: '#3A86C820',
+    backgroundColor: colors.primary + '20',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#3A86C840',
+    borderColor: colors.primary + '40',
   },
   badgeText: {
-    color: '#3A86C8',
+    color: colors.primary,
     fontSize: 12,
     fontWeight: 'bold',
   },
-  // Catalog styles
   catalogCard: {
-    backgroundColor: '#1C2541',
+    backgroundColor: colors.card,
     borderRadius: 18,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.border,
   },
   catalogTitle: {
-    color: '#FFFFFF',
+    color: colors.text,
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 6,
   },
   catalogSubtitle: {
-    color: '#5C6B73',
+    color: colors.textSecondary,
     fontSize: 13,
     lineHeight: 18,
     marginBottom: 16,
@@ -573,56 +1028,55 @@ const styles = StyleSheet.create({
   },
   productCard: {
     width: '48%',
-    backgroundColor: '#0B132B',
+    backgroundColor: colors.background,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.border,
     overflow: 'hidden',
     marginBottom: 8,
   },
   productImage: {
     width: '100%',
     height: 110,
-    backgroundColor: '#1C2541',
+    backgroundColor: colors.card,
   },
   productInfo: {
     padding: 10,
     gap: 4,
   },
   productName: {
-    color: '#FFFFFF',
+    color: colors.text,
     fontSize: 13,
     fontWeight: 'bold',
     height: 34,
   },
   productPriceConIva: {
-    color: '#10B981',
+    color: colors.success,
     fontSize: 12,
     fontWeight: 'bold',
   },
   productPriceBase: {
-    color: '#5C6B73',
+    color: colors.textSecondary,
     fontSize: 10,
   },
-  addProductBtn: {
-    backgroundColor: '#3A86C8',
-    borderRadius: 8,
-    paddingVertical: 7,
+  detailsIndicator: {
+    backgroundColor: colors.primary + '15',
+    borderRadius: 6,
+    paddingVertical: 5,
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: 4,
   },
-  addProductBtnText: {
-    color: '#FFFFFF',
+  detailsIndicatorText: {
+    color: colors.primary,
     fontSize: 11,
     fontWeight: 'bold',
   },
-  // Cart Card styles
   cartCard: {
-    backgroundColor: '#1C2541',
+    backgroundColor: colors.card,
     borderRadius: 18,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.border,
     marginBottom: 20,
   },
   cartHeader: {
@@ -632,12 +1086,12 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   cartTitle: {
-    color: '#FFFFFF',
+    color: colors.text,
     fontSize: 18,
     fontWeight: 'bold',
   },
   cartBadge: {
-    backgroundColor: '#3A86C8',
+    backgroundColor: colors.primary,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 8,
@@ -648,7 +1102,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   emptyCartText: {
-    color: '#5C6B73',
+    color: colors.textSecondary,
     fontSize: 14,
     fontStyle: 'italic',
     textAlign: 'center',
@@ -661,72 +1115,94 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0B132B',
+    backgroundColor: colors.background,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.border,
   },
   cartItemInfo: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
   cartItemName: {
-    color: '#FFFFFF',
+    color: colors.text,
     fontSize: 14,
     fontWeight: 'bold',
   },
-  cartItemQty: {
-    color: '#A78BFA',
-    fontSize: 13,
-  },
   cartItemPrice: {
-    color: '#5C6B73',
+    color: colors.textSecondary,
     fontSize: 12,
   },
   cartItemSubtotal: {
-    color: '#10B981',
+    color: colors.success,
     fontSize: 13,
     fontWeight: 'bold',
   },
+  cartQtyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 6,
+  },
+  qtyChangeBtn: {
+    backgroundColor: colors.primary + '15',
+    width: 26,
+    height: 26,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  qtyChangeBtnText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  cartQtyText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: 'bold',
+    minWidth: 16,
+    textAlign: 'center',
+  },
   removeBtn: {
-    backgroundColor: '#FF336615',
+    backgroundColor: colors.danger + '15',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#FF336630',
+    borderColor: colors.danger + '30',
   },
   removeBtnText: {
-    color: '#FF3366',
+    color: colors.danger,
     fontSize: 12,
     fontWeight: 'bold',
   },
   detailsDivider: {
     height: 1,
-    backgroundColor: '#22333B',
+    borderColor: colors.border,
+    borderWidth: 0.5,
     marginVertical: 10,
   },
   sectionTitle: {
-    color: '#A78BFA',
+    color: colors.primary,
     fontSize: 15,
     fontWeight: 'bold',
     marginBottom: 10,
   },
-  inputGroup: {
-    gap: 6,
-    marginBottom: 14,
-  },
   label: {
-    color: '#3A86C8',
+    color: colors.primary,
     fontSize: 13,
     fontWeight: '600',
+    marginBottom: 6,
   },
   input: {
-    backgroundColor: '#0B132B',
-    color: '#FFFFFF',
+    backgroundColor: colors.inputBg,
+    color: colors.inputText,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.inputBorder,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -740,28 +1216,61 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0B132B',
+    backgroundColor: colors.inputBg,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.inputBorder,
     borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   dropdownTextSelected: {
-    color: '#FFFFFF',
+    color: colors.inputText,
     fontSize: 14,
     fontWeight: '500',
   },
   dropdownArrow: {
-    color: '#5C6B73',
+    color: colors.textSecondary,
     fontSize: 12,
   },
+  gamSelectorRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  gamBtn: {
+    flex: 1,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  gamBtnSelected: {
+    backgroundColor: colors.primary + '15',
+    borderColor: colors.primary,
+  },
+  gamBtnText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  gamBtnTextSelected: {
+    color: colors.primary,
+    fontWeight: 'bold',
+  },
+  gamHelpText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 6,
+    lineHeight: 16,
+  },
   summaryContainer: {
-    backgroundColor: '#0B132B',
+    backgroundColor: colors.background,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.border,
     gap: 8,
     marginTop: 10,
   },
@@ -771,31 +1280,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   summaryLabel: {
-    color: '#5C6B73',
+    color: colors.textSecondary,
     fontSize: 13,
   },
   summaryValue: {
-    color: '#FFFFFF',
+    color: colors.text,
     fontSize: 13,
   },
   totalRow: {
     borderTopWidth: 1,
-    borderTopColor: '#22333B',
+    borderTopColor: colors.border,
     paddingTop: 8,
     marginTop: 4,
   },
   totalLabel: {
-    color: '#A78BFA',
+    color: colors.primary,
     fontSize: 14,
     fontWeight: 'bold',
   },
   totalValue: {
-    color: '#10B981',
+    color: colors.success,
     fontSize: 16,
     fontWeight: 'bold',
   },
   button: {
-    backgroundColor: '#10B981',
+    backgroundColor: colors.success,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
@@ -817,36 +1326,35 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
   },
   loaderText: {
-    color: '#5C6B73',
+    color: colors.textSecondary,
     fontSize: 14,
   },
   successContainer: {
-    backgroundColor: '#10B98115',
+    backgroundColor: colors.success + '15',
     borderWidth: 1,
-    borderColor: '#10B98130',
+    borderColor: colors.success + '30',
     padding: 12,
     borderRadius: 10,
     marginBottom: 14,
   },
   successText: {
-    color: '#10B981',
+    color: colors.success,
     fontSize: 13,
     textAlign: 'center',
   },
   errorContainer: {
-    backgroundColor: '#FF336615',
+    backgroundColor: colors.danger + '15',
     borderWidth: 1,
-    borderColor: '#FF336630',
+    borderColor: colors.danger + '30',
     padding: 12,
     borderRadius: 10,
     marginBottom: 14,
   },
   errorText: {
-    color: '#FF3366',
+    color: colors.danger,
     fontSize: 13,
     textAlign: 'center',
   },
-  // Modal Overlays
   modalOverlay: {
     flex: 1,
     backgroundColor: '#000000AA',
@@ -857,16 +1365,16 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%',
     maxHeight: '80%',
-    backgroundColor: '#1C2541',
+    backgroundColor: colors.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.border,
     padding: 20,
     gap: 16,
   },
   modalTitle: {
-    color: '#FFFFFF',
-    fontSize: 17,
+    color: colors.text,
+    fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 4,
@@ -874,32 +1382,193 @@ const styles = StyleSheet.create({
   modalItem: {
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#22333B',
+    borderBottomColor: colors.border,
   },
   modalItemActive: {
-    backgroundColor: '#3A86C815',
+    backgroundColor: colors.primary + '15',
   },
   modalItemText: {
-    color: '#FFFFFF',
+    color: colors.text,
     fontSize: 14,
     textAlign: 'center',
   },
   modalItemTextActive: {
-    color: '#3A86C8',
+    color: colors.primary,
     fontWeight: 'bold',
   },
   closeModalButton: {
-    backgroundColor: '#FF336630',
+    backgroundColor: colors.danger + '15',
     borderRadius: 10,
     paddingVertical: 12,
     alignItems: 'center',
     marginTop: 6,
     borderWidth: 1,
-    borderColor: '#FF336660',
+    borderColor: colors.danger + '30',
   },
   closeModalButtonText: {
-    color: '#FF3366',
+    color: colors.danger,
     fontSize: 14,
     fontWeight: 'bold',
-  }
+  },
+  
+  // DETAIL MODAL STYLES
+  detailModalContent: {
+    width: '100%',
+    maxHeight: '90%',
+    backgroundColor: colors.card,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 24,
+  },
+  closeDetailBadge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  closeDetailBadgeText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  detailModalImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 16,
+    backgroundColor: colors.background,
+    marginBottom: 16,
+  },
+  detailModalName: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  detailPriceBlock: {
+    gap: 4,
+    marginBottom: 12,
+  },
+  detailPriceIva: {
+    color: colors.success,
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  detailPriceBase: {
+    color: colors.textSecondary,
+    fontSize: 14,
+  },
+  detailSectionTitle: {
+    color: colors.primary,
+    fontSize: 15,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    marginTop: 6,
+  },
+  detailDescription: {
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  detailQtySelectorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 4,
+    marginBottom: 14,
+  },
+  detailQtyBtn: {
+    backgroundColor: colors.primary,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  detailQtyBtnText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  detailQtyText: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+    minWidth: 24,
+    textAlign: 'center',
+  },
+  detailAddBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  detailAddBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  
+  // PAYMENT SIMULATOR STYLES
+  paymentTotalText: {
+    color: colors.success,
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  paymentTabRow: {
+    flexDirection: 'row',
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 16,
+  },
+  paymentTab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  paymentTabSelected: {
+    backgroundColor: colors.card,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  paymentTabText: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  paymentTabTextSelected: {
+    color: colors.primary,
+    fontWeight: 'bold',
+  },
+  payConfirmButton: {
+    backgroundColor: colors.success,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.success,
+  },
+  payConfirmButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
 });

@@ -12,10 +12,13 @@ import {
   RefreshControl,
   KeyboardAvoidingView,
   Platform,
-  Alert
+  Alert,
+  Linking
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { apiCall } from '../services/api';
+import { useTheme, getThemeOverrides } from '../context/ThemeContext';
+import { apiCall, BASE_URL } from '../services/api';
+import ThemeToggle from '../components/ThemeToggle';
 
 interface UserItem {
   id: number;
@@ -62,6 +65,8 @@ function WebDeleteButton({ onPress, label, disabled, style }: WebDeleteButtonPro
 
 export default function AdminScreen() {
   const { user, logout } = useAuth();
+  const { colors } = useTheme();
+  const themeStyles = getThemeOverrides(colors);
   const [activeTab, setActiveTab] = useState<'usuarios' | 'pedidos'>('usuarios');
   const [activeOrderSubTab, setActiveOrderSubTab] = useState<'pendientes' | 'despachados'>('pendientes');
 
@@ -234,27 +239,38 @@ export default function AdminScreen() {
     return isNaN(val) ? '₡0.00' : `₡${val.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,')}`;
   };
 
+  const handleExportPDF = (pedidoId: number) => {
+    const pdfUrl = `${BASE_URL}/pedidos/${pedidoId}/exportar-pdf`;
+    Linking.openURL(pdfUrl).catch((err) => {
+      console.error('Error opening PDF URL:', err);
+      Alert.alert('Error', 'No se pudo abrir el enlace para descargar el PDF');
+    });
+  };
+
   if (isLoading && !refreshing) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3A86C8" />
+      <View style={[styles.loadingContainer, themeStyles.loadingContainer]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0B132B" />
+    <SafeAreaView style={[styles.container, themeStyles.container]}>
+      <StatusBar barStyle={colors.background === '#0B132B' ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
       {/* Header Banner */}
-      <View style={styles.header}>
+      <View style={[styles.header, themeStyles.header]}>
         <View style={styles.headerProfile}>
-          <Text style={styles.headerTitle}>Panel de Control</Text>
-          <Text style={styles.headerUser}>Administrador: {user?.nombre}</Text>
+          <Text style={[styles.headerTitle, themeStyles.headerTitle]}>Panel de Control</Text>
+          <Text style={[styles.headerUser, { color: colors.textSecondary }]}>Administrador: {user?.nombre}</Text>
         </View>
-        <TouchableOpacity style={styles.logoutButton} onPress={logout} activeOpacity={0.7}>
-          <Text style={styles.logoutButtonText}>Salir</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <ThemeToggle />
+          <TouchableOpacity style={styles.logoutButton} onPress={logout} activeOpacity={0.7}>
+            <Text style={styles.logoutButtonText}>Salir</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Tabs */}
@@ -625,6 +641,7 @@ export default function AdminScreen() {
                     <Text style={[styles.tableHeaderCell, { width: 130 }]}>Alistador Asignado</Text>
                     <Text style={[styles.tableHeaderCell, { width: 110 }]}>Total (con IVA)</Text>
                     <Text style={[styles.tableHeaderCell, { width: 130 }]}>Estado</Text>
+                    <Text style={[styles.tableHeaderCell, { width: 100 }]}>Acciones</Text>
                   </View>
 
                   {ordersList.filter(ord => {
@@ -660,6 +677,19 @@ export default function AdminScreen() {
                             <View style={[styles.statusBadge, { backgroundColor: getStatusBadgeColor(ord.estado) }]}>
                               <Text style={styles.statusBadgeText}>{ord.estado}</Text>
                             </View>
+                          </View>
+                          <View style={[{ width: 100, justifyContent: 'center', alignItems: 'center' }]}>
+                            {ord.estado === 'Entregado' || ord.estado === 'Listo' || ord.estado === 'Listo para Despacho' ? (
+                              <TouchableOpacity 
+                                style={styles.pdfButton} 
+                                onPress={() => handleExportPDF(ord.pedido_id)}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={styles.pdfButtonText}>📄 PDF</Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <Text style={{ color: '#5C6B73', fontSize: 12 }}>-</Text>
+                            )}
                           </View>
                         </View>
                       ))
@@ -966,6 +996,21 @@ const styles = StyleSheet.create({
   },
   subTabTextActive: {
     color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  pdfButton: {
+    backgroundColor: '#3A86C815',
+    borderColor: '#3A86C850',
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pdfButtonText: {
+    color: '#3A86C8',
+    fontSize: 11,
     fontWeight: 'bold',
   },
 });

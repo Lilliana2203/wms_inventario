@@ -14,7 +14,9 @@ import {
   RefreshControl
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { useTheme, getThemeOverrides } from '../context/ThemeContext';
 import { apiCall } from '../services/api';
+import ThemeToggle from '../components/ThemeToggle';
 
 const ARTICLE_IDS: { [key: string]: number } = {
   'Taladros': 1,
@@ -77,6 +79,8 @@ interface PendingOrder {
 
 export default function MapaScreen() {
   const { user, logout } = useAuth();
+  const { colors } = useTheme();
+  const themeStyles = getThemeOverrides(colors);
   const isAlistador = user?.rol_id === 2; // Rol 2: Alistador. Rol 3: Montacargas
 
   // Navigation tab for Alistador
@@ -195,6 +199,7 @@ export default function MapaScreen() {
 
       if (response.success) {
         setSuccessMsg(response.message || `Solicitud de abasto enviada para ${pos.articulo}`);
+        await fetchRacksMap();
         // Clear message after 3s
         setTimeout(() => setSuccessMsg(null), 3000);
       } else {
@@ -337,24 +342,27 @@ export default function MapaScreen() {
 
   if (isLoading && !refreshing) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3A86C8" />
+      <View style={[styles.loadingContainer, themeStyles.loadingContainer]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0B132B" />
+    <SafeAreaView style={[styles.container, themeStyles.container]}>
+      <StatusBar barStyle={colors.background === '#0B132B' ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>
+      <View style={[styles.header, themeStyles.header]}>
+        <Text style={[styles.headerTitle, themeStyles.headerTitle]}>
           {isAlistador ? 'Módulo de Alisto' : 'Mapa de Bodega'}
         </Text>
-        <TouchableOpacity style={styles.logoutButton} onPress={logout} activeOpacity={0.7}>
-          <Text style={styles.logoutButtonText}>Salir</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <ThemeToggle />
+          <TouchableOpacity style={styles.logoutButton} onPress={logout} activeOpacity={0.7}>
+            <Text style={styles.logoutButtonText}>Salir</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Alistador Tab Bar */}
@@ -407,14 +415,14 @@ export default function MapaScreen() {
         }
       >
         {/* Profile Card */}
-        <View style={styles.profileCard}>
+        <View style={[styles.profileCard, themeStyles.profileCard]}>
           <View style={styles.profileDetails}>
-            <Text style={styles.welcomeText}>Operario Autorizado</Text>
-            <Text style={styles.userName}>{user?.nombre}</Text>
-            <Text style={styles.userEmail}>{user?.email}</Text>
+            <Text style={[styles.welcomeText, { color: colors.primary }]}>Operario Autorizado</Text>
+            <Text style={[styles.userName, themeStyles.userName]}>{user?.nombre}</Text>
+            <Text style={[styles.userEmail, themeStyles.userEmail]}>{user?.email}</Text>
           </View>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>
+          <View style={[styles.badge, { backgroundColor: colors.primary + '20', borderColor: colors.primary + '40' }]}>
+            <Text style={[styles.badgeText, { color: colors.primary }]}>
               {isAlistador ? 'Alistador' : 'Montacargas'}
             </Text>
           </View>
@@ -490,9 +498,9 @@ export default function MapaScreen() {
 
             {/* Rack Maps */}
             {Object.keys(racks).map((rackName) => (
-              <View key={rackName} style={styles.rackContainer}>
+              <View key={rackName} style={[styles.rackContainer, themeStyles.rackContainer]}>
                 <View style={styles.rackHeader}>
-                  <Text style={styles.rackTitle}>{rackName}</Text>
+                  <Text style={[styles.rackTitle, themeStyles.rackTitle]}>{rackName}</Text>
                 </View>
 
                 <View style={styles.floorList}>
@@ -505,23 +513,23 @@ export default function MapaScreen() {
                     const isOverStock = pos.cantidad_actual > pos.capacidad_maxima;
 
                     return (
-                      <View key={pos.id} style={styles.floorCard}>
+                      <View key={pos.id} style={[styles.floorCard, themeStyles.floorCard]}>
                         <View style={styles.floorRow}>
                           <View style={styles.floorLeft}>
                             <View style={[styles.floorIndicator, isAltura ? styles.floorIndicatorAltura : styles.floorIndicatorAlisto]}>
                               <Text style={styles.floorIndicatorText}>Piso {pos.piso}</Text>
                             </View>
-                            <Text style={styles.floorTypeText}>{pos.tipo_piso}</Text>
+                            <Text style={[styles.floorTypeText, themeStyles.floorTypeText]}>{pos.tipo_piso}</Text>
                           </View>
 
                           <View style={styles.floorRight}>
-                            <Text style={styles.stockText}>
+                            <Text style={[styles.stockText, themeStyles.stockText]}>
                               {pos.cantidad_actual} / {pos.capacidad_maxima} uds
                             </Text>
                           </View>
                         </View>
 
-                        <Text style={styles.articleName}>{pos.articulo}</Text>
+                        <Text style={[styles.articleName, { color: colors.text }]}>{pos.articulo}</Text>
 
                         {/* Progress Bar */}
                         <View style={styles.progressTrack}>

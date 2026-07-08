@@ -9,10 +9,12 @@ import {
   StatusBar,
   TouchableOpacity,
   RefreshControl,
-  ScrollView
+  ScrollView,
+  Linking,
+  Alert
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { apiCall } from '../services/api';
+import { apiCall, BASE_URL } from '../services/api';
 
 interface OrderItem {
   articulo_id: number;
@@ -44,6 +46,16 @@ export default function HistorialClienteScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const handleDownloadInvoice = async (orderId: number) => {
+    try {
+      const url = `${BASE_URL}/pedidos/${orderId}/exportar-pdf`;
+      await Linking.openURL(url);
+    } catch (error) {
+      console.error('Error opening invoice PDF:', error);
+      Alert.alert('Error', 'No se pudo descargar la factura PDF de este pedido.');
+    }
+  };
 
   const fetchOrders = async (showLoader = true) => {
     if (showLoader) setIsLoading(true);
@@ -175,6 +187,14 @@ export default function HistorialClienteScreen() {
             <Text style={styles.totalValue}>{formatCRC(item.total)}</Text>
           </View>
         </View>
+
+        <TouchableOpacity
+          style={styles.downloadButton}
+          onPress={() => handleDownloadInvoice(item.id)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.downloadButtonText}>📄 Descargar Factura PDF</Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -417,6 +437,20 @@ const styles = StyleSheet.create({
   totalValue: {
     color: '#10B981',
     fontSize: 16,
+    fontWeight: 'bold',
+  },
+  downloadButton: {
+    backgroundColor: '#3A86C8',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: '#3A86C8' + '50',
+  },
+  downloadButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
     fontWeight: 'bold',
   }
 });

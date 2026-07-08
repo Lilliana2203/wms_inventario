@@ -14,7 +14,9 @@ import {
   RefreshControl
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { useTheme, getThemeOverrides } from '../context/ThemeContext';
 import { apiCall } from '../services/api';
+import ThemeToggle from '../components/ThemeToggle';
 
 const ARTICLES = [
   { id: 1, nombre: 'Taladros' },
@@ -78,13 +80,28 @@ interface SupplierCartItem {
   cantidad: number;
 }
 
+interface Movimiento {
+  id: number;
+  articulo_id: number;
+  usuario_id: number;
+  tipo_movimiento: 'ENTRADA' | 'SALIDA' | 'REABASTECIMIENTO' | 'AJUSTE';
+  cantidad: number;
+  posicion_origen: string | null;
+  posicion_destino: string | null;
+  fecha: string;
+  articulo_nombre: string;
+  usuario_nombre: string;
+}
+
 export default function AjustesScreen() {
   const { user, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'racks' | 'abastecer'>('racks');
+  const { colors } = useTheme();
+  const [activeTab, setActiveTab] = useState<'racks' | 'abastecer' | 'movimientos'>('racks');
 
   // Rack Map & Alistador Requests States
   const [racks, setRacks] = useState<{ [key: string]: RackPosition[] }>({});
   const [solicitudes, setSolicitudes] = useState<SolicitudAbasto[]>([]);
+  const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -101,9 +118,10 @@ export default function AjustesScreen() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [supplierCart, setSupplierCart] = useState<SupplierCartItem[]>([]);
 
-  // Feedback states
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const themeStyles = getThemeOverrides(colors);
 
   const fetchRacksAndRequests = useCallback(async () => {
     try {
@@ -139,13 +157,37 @@ export default function AjustesScreen() {
     }
   }, []);
 
+  const fetchMovimientos = useCallback(async () => {
+    try {
+      const response = await apiCall<Movimiento[]>('/inventario/movimientos', 'GET');
+      if (response.success && response.data) {
+        setMovimientos(response.data);
+      }
+    } catch (e: any) {
+      console.error('Error fetching movements:', e.message);
+    } finally {
+      setIsLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
   useEffect(() => {
-    fetchRacksAndRequests();
-  }, [fetchRacksAndRequests]);
+    if (activeTab === 'movimientos') {
+      setIsLoading(true);
+      fetchMovimientos();
+    } else {
+      setIsLoading(true);
+      fetchRacksAndRequests();
+    }
+  }, [activeTab, fetchMovimientos, fetchRacksAndRequests]);
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchRacksAndRequests();
+    if (activeTab === 'movimientos') {
+      fetchMovimientos();
+    } else {
+      fetchRacksAndRequests();
+    }
   };
 
   const handleOpenAction = (pos: RackPosition, type: 'ADD' | 'SUB') => {
@@ -171,6 +213,7 @@ export default function AjustesScreen() {
       if (response.success) {
         setSuccessMsg(response.message || `Solicitud escalada para ${sol.articulo}`);
         await fetchRacksAndRequests();
+        await fetchMovimientos();
         setTimeout(() => setSuccessMsg(null), 3000);
       } else {
         setErrorMsg(response.message || 'Error al escalar la solicitud');
@@ -226,6 +269,7 @@ export default function AjustesScreen() {
             : `Ajuste exitoso: Se restaron ${qty} unidades de "${selectedPos.articulo}" del piso ${selectedPos.piso} por merma/daño.`
         );
         await fetchRacksAndRequests();
+        await fetchMovimientos();
         setTimeout(() => {
           setIsModalOpen(false);
           setSelectedPos(null);
@@ -309,6 +353,7 @@ export default function AjustesScreen() {
         setSuccessMsg(response.message || '¡Abastecimiento de bodega completado con éxito!');
         setSupplierCart([]);
         await fetchRacksAndRequests();
+        await fetchMovimientos();
       } else {
         setErrorMsg(response.message || 'Error al confirmar abastecimiento');
       }
@@ -321,26 +366,29 @@ export default function AjustesScreen() {
 
   if (isLoading && !refreshing) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3A86C8" />
+      <View style={[styles.loadingContainer, themeStyles.loadingContainer]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0B132B" />
+    <SafeAreaView style={[styles.container, themeStyles.container]}>
+      <StatusBar barStyle={colors.background === '#0B132B' ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Panel de Inventario</Text>
-        <TouchableOpacity style={styles.logoutButton} onPress={logout} activeOpacity={0.7}>
-          <Text style={styles.logoutButtonText}>Salir</Text>
-        </TouchableOpacity>
+      <View style={[styles.header, themeStyles.header]}>
+        <Text style={[styles.headerTitle, themeStyles.headerTitle]}>Panel de Inventario</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <ThemeToggle />
+          <TouchableOpacity style={styles.logoutButton} onPress={logout} activeOpacity={0.7}>
+            <Text style={styles.logoutButtonText}>Salir</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Tab Selector */}
-      <View style={styles.tabContainer}>
+      <View style={[styles.tabContainer, themeStyles.tabContainer]}>
         <TouchableOpacity
           style={[styles.tabButton, activeTab === 'racks' && styles.tabButtonActive]}
           onPress={() => {
@@ -362,7 +410,19 @@ export default function AjustesScreen() {
           }}
         >
           <Text style={[styles.tabText, activeTab === 'abastecer' && styles.tabTextActive]}>
-            Abastecer Bodega (Proveedores)
+            Abastecer Bodega
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'movimientos' && styles.tabButtonActive]}
+          onPress={() => {
+            setActiveTab('movimientos');
+            setErrorMsg(null);
+            setSuccessMsg(null);
+          }}
+        >
+          <Text style={[styles.tabText, activeTab === 'movimientos' && styles.tabTextActive]}>
+            Historial
           </Text>
         </TouchableOpacity>
       </View>
@@ -386,30 +446,30 @@ export default function AjustesScreen() {
         }
       >
         {/* Profile Card */}
-        <View style={styles.profileCard}>
+        <View style={[styles.profileCard, themeStyles.profileCard]}>
           <View style={styles.profileDetails}>
-            <Text style={styles.welcomeText}>Encargado de Inventario</Text>
-            <Text style={styles.userName}>{user?.nombre}</Text>
-            <Text style={styles.userEmail}>{user?.email}</Text>
+            <Text style={[styles.welcomeText, { color: colors.primary }]}>Encargado de Inventario</Text>
+            <Text style={[styles.userName, themeStyles.userName]}>{user?.nombre}</Text>
+            <Text style={[styles.userEmail, themeStyles.userEmail]}>{user?.email}</Text>
           </View>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>Inventario</Text>
+          <View style={[styles.badge, { backgroundColor: colors.primary + '20', borderColor: colors.primary + '40' }]}>
+            <Text style={[styles.badgeText, { color: colors.primary }]}>Inventario</Text>
           </View>
         </View>
 
-        {activeTab === 'racks' ? (
+        {activeTab === 'racks' && (
           /* Adjustments Map Tab */
           <View style={{ gap: 20 }}>
             {/* Alistador Requests Escalation Widget */}
             {solicitudes.length > 0 && (
-              <View style={styles.requestsContainer}>
-                <Text style={styles.requestsTitle}>🔔 Solicitudes de Alistadores</Text>
+              <View style={[styles.requestsContainer, themeStyles.requestsContainer]}>
+                <Text style={[styles.requestsTitle, { color: colors.text }]}>🔔 Solicitudes de Alistadores</Text>
                 <View style={styles.requestsList}>
                   {solicitudes.map((sol) => (
-                    <View key={sol.id} style={styles.requestCard}>
+                    <View key={sol.id} style={[styles.requestCard, themeStyles.requestCard]}>
                       <View style={styles.requestInfo}>
-                        <Text style={styles.requestArtName}>{sol.articulo}</Text>
-                        <Text style={styles.requestDetails}>
+                        <Text style={[styles.requestArtName, themeStyles.requestArtName]}>{sol.articulo}</Text>
+                        <Text style={[styles.requestDetails, themeStyles.requestDetails]}>
                           Por: {sol.solicitado_por_nombre} | {new Date(sol.fecha_creacion).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </Text>
                       </View>
@@ -430,9 +490,9 @@ export default function AjustesScreen() {
 
             {/* Rack Maps */}
             {Object.keys(racks).map((rackName) => (
-              <View key={rackName} style={styles.rackContainer}>
+              <View key={rackName} style={[styles.rackContainer, themeStyles.rackContainer]}>
                 <View style={styles.rackHeader}>
-                  <Text style={styles.rackTitle}>{rackName}</Text>
+                  <Text style={[styles.rackTitle, themeStyles.rackTitle]}>{rackName}</Text>
                 </View>
 
                 <View style={styles.floorList}>
@@ -442,23 +502,23 @@ export default function AjustesScreen() {
                     const isOverStock = pos.cantidad_actual > pos.capacidad_maxima;
 
                     return (
-                      <View key={pos.piso} style={styles.floorCard}>
+                      <View key={pos.piso} style={[styles.floorCard, themeStyles.floorCard]}>
                         <View style={styles.floorRow}>
                           <View style={styles.floorLeft}>
                             <View style={[styles.floorIndicator, isAltura ? styles.floorIndicatorAltura : styles.floorIndicatorAlisto]}>
                               <Text style={styles.floorIndicatorText}>Piso {pos.piso}</Text>
                             </View>
-                            <Text style={styles.floorTypeText}>{pos.tipo_piso}</Text>
+                            <Text style={[styles.floorTypeText, themeStyles.floorTypeText]}>{pos.tipo_piso}</Text>
                           </View>
 
                           <View style={styles.floorRight}>
-                            <Text style={styles.stockText}>
+                            <Text style={[styles.stockText, themeStyles.stockText]}>
                               {pos.cantidad_actual} / {pos.capacidad_maxima} uds
                             </Text>
                           </View>
                         </View>
 
-                        <Text style={styles.articleName}>{pos.articulo}</Text>
+                        <Text style={[styles.articleName, { color: colors.text }]}>{pos.articulo}</Text>
 
                         {/* Progress Bar */}
                         <View style={styles.progressTrack}>
@@ -524,7 +584,9 @@ export default function AjustesScreen() {
               </View>
             ))}
           </View>
-        ) : (
+        )}
+
+        {activeTab === 'abastecer' && (
           /* Abastecer (Proveedores) Tab */
           <View style={{ gap: 20 }}>
             {/* Input Picker Form */}
@@ -628,6 +690,74 @@ export default function AjustesScreen() {
                 </View>
               )}
             </View>
+          </View>
+        )}
+
+        {activeTab === 'movimientos' && (
+          /* Historial de Movimientos Tab */
+          <View style={styles.historyContainer}>
+            <Text style={styles.sectionTitle}>Historial de Movimientos</Text>
+            {movimientos.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No hay movimientos registrados.</Text>
+              </View>
+            ) : (
+              movimientos.map((item) => {
+                // Determine badge color
+                let badgeColor = '#FFD166'; // Default AJUSTE (Yellow)
+                if (item.tipo_movimiento === 'ENTRADA' || item.tipo_movimiento === 'REABASTECIMIENTO') {
+                  badgeColor = '#06D6A0'; // Green
+                } else if (item.tipo_movimiento === 'SALIDA') {
+                  badgeColor = '#EF476F'; // Red
+                }
+
+                // Determine position text
+                let positionsText = '';
+                if (item.posicion_origen && item.posicion_destino) {
+                  positionsText = `${item.posicion_origen} ➔ ${item.posicion_destino}`;
+                } else if (item.posicion_origen) {
+                  positionsText = `Origen: ${item.posicion_origen}`;
+                } else if (item.posicion_destino) {
+                  positionsText = `Destino: ${item.posicion_destino}`;
+                } else {
+                  positionsText = 'Ajuste general';
+                }
+
+                // Date formatting
+                const dateFormatted = new Date(item.fecha).toLocaleString([], {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+
+                return (
+                  <View key={item.id} style={styles.historyCard}>
+                    <View style={styles.historyCardHeader}>
+                      <View style={[styles.typeBadge, { backgroundColor: badgeColor }]}>
+                        <Text style={styles.typeBadgeText}>{item.tipo_movimiento}</Text>
+                      </View>
+                      <Text style={styles.historyQty}>{item.cantidad} Uds</Text>
+                    </View>
+
+                    <Text style={styles.historyArticleName}>{item.articulo_nombre}</Text>
+                    
+                    <View style={styles.historyDetailsRow}>
+                      <Text style={styles.detailsTextLabel}>Ubicación:</Text>
+                      <Text style={styles.detailsTextVal}>{positionsText}</Text>
+                    </View>
+
+                    <View style={styles.historyDetailsRow}>
+                      <Text style={styles.detailsTextLabel}>Operario:</Text>
+                      <Text style={styles.detailsTextVal}>{item.usuario_nombre}</Text>
+                    </View>
+
+                    <Text style={styles.historyDate}>{dateFormatted}</Text>
+                  </View>
+                );
+              })
+            )}
           </View>
         )}
       </ScrollView>
@@ -1405,5 +1535,76 @@ const styles = StyleSheet.create({
     color: '#FF3366',
     fontWeight: 'bold',
     fontSize: 15,
+  },
+  historyContainer: {
+    gap: 15,
+    paddingBottom: 20,
+  },
+  historyCard: {
+    backgroundColor: '#1C2541',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#22333B',
+    gap: 8,
+  },
+  historyCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  typeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  typeBadgeText: {
+    color: '#0B132B',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  historyQty: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  historyArticleName: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  historyDetailsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  detailsTextLabel: {
+    color: '#5C6B73',
+    fontSize: 12,
+    width: 80,
+  },
+  detailsTextVal: {
+    color: '#E0E1DD',
+    fontSize: 12,
+    flex: 1,
+  },
+  historyDate: {
+    color: '#5C6B73',
+    fontSize: 11,
+    alignSelf: 'flex-end',
+    marginTop: 4,
+  },
+  emptyContainer: {
+    padding: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1C2541',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#22333B',
+  },
+  emptyText: {
+    color: '#5C6B73',
+    fontSize: 14,
   },
 });

@@ -12,19 +12,20 @@ import {
   StatusBar
 } from 'react-native';
 import { apiCall } from '../services/api';
+import { useTheme } from '../context/ThemeContext';
+import ThemeToggle from '../components/ThemeToggle';
 
 interface RegisterScreenProps {
   onNavigateToLogin: () => void;
 }
 
 export default function RegisterScreen({ onNavigateToLogin }: RegisterScreenProps) {
+  const { colors } = useTheme();
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Feedback states
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -32,21 +33,25 @@ export default function RegisterScreen({ onNavigateToLogin }: RegisterScreenProp
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    // Client-side validations
+    // Validations
     if (!nombre.trim()) {
-      setErrorMsg('El nombre completo es requerido');
+      setErrorMsg('El nombre es requerido');
       return;
     }
     if (!email.trim()) {
       setErrorMsg('El correo electrónico es requerido');
       return;
     }
-    if (!/\S+@\S+\.\S+/.test(email)) {
-      setErrorMsg('Ingresa un correo electrónico válido');
-      return;
-    }
     if (!password) {
       setErrorMsg('La contraseña es requerida');
+      return;
+    }
+    if (password.length < 6) {
+      setErrorMsg('La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      setErrorMsg('Ingresa un correo electrónico válido');
       return;
     }
 
@@ -59,17 +64,12 @@ export default function RegisterScreen({ onNavigateToLogin }: RegisterScreenProp
       });
 
       if (response.success) {
-        setSuccessMsg('¡Registro exitoso! Redirigiendo al Login...');
-        // Clear inputs
-        setNombre('');
-        setEmail('');
-        setPassword('');
-        // Redirect to login screen after 1.5 seconds
+        setSuccessMsg('Registro exitoso. Redirigiendo al inicio de sesión...');
         setTimeout(() => {
           onNavigateToLogin();
-        }, 1500);
+        }, 2000);
       } else {
-        setErrorMsg(response.message || 'Error al crear la cuenta');
+        setErrorMsg(response.message || 'Error al registrar cliente');
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Error de conexión con el servidor');
@@ -78,12 +78,20 @@ export default function RegisterScreen({ onNavigateToLogin }: RegisterScreenProp
     }
   };
 
+  const styles = getStyles(colors);
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <StatusBar barStyle="light-content" backgroundColor="#0B132B" />
+      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+      
+      {/* Top Floating Theme Switch */}
+      <View style={styles.topBar}>
+        <ThemeToggle />
+      </View>
+
       <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
         
         {/* Header Section */}
@@ -91,39 +99,37 @@ export default function RegisterScreen({ onNavigateToLogin }: RegisterScreenProp
           <View style={styles.logoBadge}>
             <Text style={styles.logoBadgeText}>WMS</Text>
           </View>
-          <Text style={styles.title}>Registro de Clientes</Text>
-          <Text style={styles.subtitle}>Crea tu cuenta de adquirente</Text>
+          <Text style={styles.title}>Registro de Cliente</Text>
+          <Text style={styles.subtitle}>Cree su cuenta para realizar pedidos</Text>
         </View>
 
         {/* Form Card */}
         <View style={styles.card}>
           
-          {/* Success Message Box */}
-          {successMsg && (
-            <View style={styles.successContainer}>
-              <Text style={styles.successText}>{successMsg}</Text>
-            </View>
-          )}
-
-          {/* Error Message Box */}
           {errorMsg && (
             <View style={styles.errorContainer}>
               <Text style={styles.errorText}>{errorMsg}</Text>
             </View>
           )}
 
-          {/* Full Name Input */}
+          {successMsg && (
+            <View style={styles.successContainer}>
+              <Text style={styles.successText}>{successMsg}</Text>
+            </View>
+          )}
+
+          {/* Nombre Input */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Nombre Completo</Text>
             <TextInput
               style={styles.input}
-              placeholder="Ej. Juan Pérez"
-              placeholderTextColor="#5C6B73"
+              placeholder="Su nombre"
+              placeholderTextColor={colors.textSecondary}
               autoCapitalize="words"
               value={nombre}
               onChangeText={(text) => {
                 setNombre(text);
-                setErrorMsg(null);
+                if (errorMsg) setErrorMsg(null);
               }}
               editable={!isSubmitting}
             />
@@ -135,14 +141,14 @@ export default function RegisterScreen({ onNavigateToLogin }: RegisterScreenProp
             <TextInput
               style={styles.input}
               placeholder="ejemplo@correo.com"
-              placeholderTextColor="#5C6B73"
+              placeholderTextColor={colors.textSecondary}
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
               value={email}
               onChangeText={(text) => {
                 setEmail(text);
-                setErrorMsg(null);
+                if (errorMsg) setErrorMsg(null);
               }}
               editable={!isSubmitting}
             />
@@ -150,19 +156,19 @@ export default function RegisterScreen({ onNavigateToLogin }: RegisterScreenProp
 
           {/* Password Input */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Contraseña</Text>
+            <Text style={styles.label}>Contraseña (mínimo 6 caracteres)</Text>
             <View style={styles.passwordWrapper}>
               <TextInput
                 style={styles.passwordInput}
-                placeholder="Elige tu contraseña"
-                placeholderTextColor="#5C6B73"
+                placeholder="Crea una contraseña"
+                placeholderTextColor={colors.textSecondary}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
                 value={password}
                 onChangeText={(text) => {
                   setPassword(text);
-                  setErrorMsg(null);
+                  if (errorMsg) setErrorMsg(null);
                 }}
                 editable={!isSubmitting}
               />
@@ -188,7 +194,7 @@ export default function RegisterScreen({ onNavigateToLogin }: RegisterScreenProp
             {isSubmitting ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
-              <Text style={styles.buttonText}>Crear Cuenta de Cliente</Text>
+              <Text style={styles.buttonText}>Registrarse</Text>
             )}
           </TouchableOpacity>
 
@@ -212,10 +218,16 @@ export default function RegisterScreen({ onNavigateToLogin }: RegisterScreenProp
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B132B',
+    backgroundColor: colors.background,
+  },
+  topBar: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    zIndex: 10,
   },
   scrollContainer: {
     flexGrow: 1,
@@ -224,15 +236,15 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 36,
   },
   logoBadge: {
-    backgroundColor: '#3A86C8',
+    backgroundColor: colors.primary,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: '#3A86C8',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -247,17 +259,17 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 26,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: colors.text,
     marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 15,
-    color: '#5C6B73',
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   card: {
-    backgroundColor: '#1C2541',
+    backgroundColor: colors.card,
     borderRadius: 24,
     padding: 24,
     shadowColor: '#000',
@@ -266,32 +278,32 @@ const styles = StyleSheet.create({
     shadowRadius: 15,
     elevation: 10,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.border,
   },
   errorContainer: {
-    backgroundColor: '#FF336620',
-    borderColor: '#FF336650',
+    backgroundColor: colors.danger + '20',
+    borderColor: colors.danger + '50',
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
     marginBottom: 20,
   },
   errorText: {
-    color: '#FF3366',
+    color: colors.danger,
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
   },
   successContainer: {
-    backgroundColor: '#10B98120',
-    borderColor: '#10B98150',
+    backgroundColor: colors.success + '20',
+    borderColor: colors.success + '50',
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
     marginBottom: 20,
   },
   successText: {
-    color: '#10B981',
+    color: colors.success,
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
@@ -302,33 +314,33 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#3A86C8',
+    color: colors.primary,
     marginBottom: 8,
   },
   input: {
     height: 52,
-    backgroundColor: '#0B132B',
+    backgroundColor: colors.inputBg,
     borderRadius: 12,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#FFFFFF',
+    color: colors.inputText,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.inputBorder,
   },
   passwordWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0B132B',
+    backgroundColor: colors.inputBg,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#22333B',
+    borderColor: colors.inputBorder,
   },
   passwordInput: {
     flex: 1,
     height: 52,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#FFFFFF',
+    color: colors.inputText,
   },
   eyeButton: {
     paddingHorizontal: 16,
@@ -336,25 +348,25 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   eyeButtonText: {
-    color: '#3A86C8',
+    color: colors.primary,
     fontWeight: '600',
     fontSize: 13,
   },
   button: {
     height: 52,
-    backgroundColor: '#3A86C8',
+    backgroundColor: colors.primary,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 12,
-    shadowColor: '#3A86C8',
+    shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 4,
   },
   buttonDisabled: {
-    backgroundColor: '#5C6B73',
+    backgroundColor: colors.textSecondary,
   },
   buttonText: {
     color: '#FFFFFF',
@@ -370,17 +382,17 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 14,
-    color: '#5C6B73',
+    color: colors.textSecondary,
   },
   footerLink: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#3A86C8',
+    color: colors.primary,
   },
   copyrightText: {
     textAlign: 'center',
     fontSize: 12,
-    color: '#5C6B73',
+    color: colors.textSecondary,
     marginTop: 36,
   },
 });

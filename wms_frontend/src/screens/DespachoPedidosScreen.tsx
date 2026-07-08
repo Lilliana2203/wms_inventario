@@ -14,7 +14,9 @@ import {
   RefreshControl
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { useTheme, getThemeOverrides } from '../context/ThemeContext';
 import { apiCall } from '../services/api';
+import ThemeToggle from '../components/ThemeToggle';
 
 const ARTICLE_IDS: { [key: string]: number } = {
   'Taladros': 1,
@@ -65,6 +67,8 @@ interface PendingOrder {
 
 export default function DespachoPedidosScreen() {
   const { user, logout } = useAuth();
+  const { colors } = useTheme();
+  const themeStyles = getThemeOverrides(colors);
   const [activeTab, setActiveTab] = useState<'pedidos' | 'mapa'>('pedidos');
 
   // State lists
@@ -158,6 +162,7 @@ export default function DespachoPedidosScreen() {
 
       if (response.success) {
         setSuccessMsg(response.message || `Solicitud de abasto enviada para ${pos.articulo}`);
+        await fetchOrdersAndMap();
         setTimeout(() => setSuccessMsg(null), 3000);
       } else {
         setErrorMsg(response.message || 'Error al solicitar reabastecimiento');
@@ -276,22 +281,25 @@ export default function DespachoPedidosScreen() {
 
   if (isLoading && !refreshing) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3A86C8" />
+      <View style={[styles.loadingContainer, themeStyles.loadingContainer]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0B132B" />
+    <SafeAreaView style={[styles.container, themeStyles.container]}>
+      <StatusBar barStyle={colors.background === '#0B132B' ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
 
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Módulo de Alisto</Text>
-        <TouchableOpacity style={styles.logoutButton} onPress={logout} activeOpacity={0.7}>
-          <Text style={styles.logoutButtonText}>Salir</Text>
-        </TouchableOpacity>
+      <View style={[styles.header, themeStyles.header]}>
+        <Text style={[styles.headerTitle, themeStyles.headerTitle]}>Módulo de Alisto</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <ThemeToggle />
+          <TouchableOpacity style={styles.logoutButton} onPress={logout} activeOpacity={0.7}>
+            <Text style={styles.logoutButtonText}>Salir</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Tab bar */}

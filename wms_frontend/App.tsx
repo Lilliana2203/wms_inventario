@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
+import RecuperarContrasenaScreen from './src/screens/RecuperarContrasenaScreen';
 import ComprasScreen from './src/screens/ComprasScreen';
 import HistorialClienteScreen from './src/screens/HistorialClienteScreen';
 import MapaScreen from './src/screens/MapaScreen';
@@ -12,6 +14,8 @@ import AdminScreen from './src/screens/AdminScreen';
 
 function ClienteContainer() {
   const [activeTab, setActiveTab] = useState<'catalogo' | 'historial'>('catalogo');
+  const { colors } = useTheme();
+  const styles = getStyles(colors);
 
   return (
     <View style={styles.clientContainer}>
@@ -46,21 +50,38 @@ function ClienteContainer() {
 
 function MainApp() {
   const { user, isLoading } = useAuth();
-  const [showRegister, setShowRegister] = useState(false);
+  const { colors } = useTheme();
+  const [currentScreen, setCurrentScreen] = useState<'catalog' | 'login' | 'register' | 'recovery'>('catalog');
+
+  const styles = getStyles(colors);
 
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#3A86C8" />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   if (!user) {
-    if (showRegister) {
-      return <RegisterScreen onNavigateToLogin={() => setShowRegister(false)} />;
+    switch (currentScreen) {
+      case 'catalog':
+        return <ComprasScreen onNavigateToLogin={() => setCurrentScreen('login')} />;
+      case 'login':
+        return (
+          <LoginScreen 
+            onNavigateToRegister={() => setCurrentScreen('register')} 
+            onNavigateToRecovery={() => setCurrentScreen('recovery')} 
+            onNavigateToCatalog={() => setCurrentScreen('catalog')}
+          />
+        );
+      case 'register':
+        return <RegisterScreen onNavigateToLogin={() => setCurrentScreen('login')} />;
+      case 'recovery':
+        return <RecuperarContrasenaScreen onNavigateToLogin={() => setCurrentScreen('login')} />;
+      default:
+        return <ComprasScreen onNavigateToLogin={() => setCurrentScreen('login')} />;
     }
-    return <LoginScreen onNavigateToRegister={() => setShowRegister(true)} />;
   }
 
   // Routing Logic based on 'rol_id':
@@ -81,35 +102,43 @@ function MainApp() {
     case 5:
       return <AdminScreen />;
     default:
-      return <LoginScreen onNavigateToRegister={() => setShowRegister(true)} />;
+      return (
+        <LoginScreen 
+          onNavigateToRegister={() => setCurrentScreen('register')} 
+          onNavigateToRecovery={() => setCurrentScreen('recovery')} 
+          onNavigateToCatalog={() => setCurrentScreen('catalog')}
+        />
+      );
   }
 }
 
 export default function App() {
   return (
     <AuthProvider>
-      <MainApp />
+      <ThemeProvider>
+        <MainApp />
+      </ThemeProvider>
     </AuthProvider>
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors: any) => StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#0B132B',
+    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },
   clientContainer: {
     flex: 1,
-    backgroundColor: '#0B132B',
+    backgroundColor: colors.background,
   },
   tabBar: {
     height: 60,
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderTopColor: '#22333B',
-    backgroundColor: '#1C2541',
+    borderTopColor: colors.border,
+    backgroundColor: colors.card,
   },
   tabItem: {
     flex: 1,
@@ -118,16 +147,16 @@ const styles = StyleSheet.create({
   },
   activeTabItem: {
     borderTopWidth: 3,
-    borderTopColor: '#3A86C8',
-    backgroundColor: '#1C2541',
+    borderTopColor: colors.primary,
+    backgroundColor: colors.card,
   },
   tabText: {
-    color: '#5C6B73',
+    color: colors.textSecondary,
     fontSize: 13,
     fontWeight: '600',
   },
   activeTabText: {
-    color: '#FFFFFF',
+    color: colors.text,
     fontWeight: 'bold',
   },
 });
