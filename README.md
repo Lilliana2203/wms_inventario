@@ -99,4 +99,4 @@ Puedes iniciar sesión en la aplicación utilizando cualquiera de las siguientes
 | **Alistador (Bodega)** | `manuelu@gmail.com` | `Password4*` |
 | **Cliente / Comprador** | `fannyq@gmail.com` | `Password8*` |
 | **Montacarguista** | `michaels@gmail.com` | `Password3*` |
-| **Administrador** | `erickp@gmail.com` | `Password5*` |
+| **Administrador** | `erickp@gmail.com` | `Password12*` |
