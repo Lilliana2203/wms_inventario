@@ -1,6 +1,9 @@
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '.env') });
+console.log("¿Se cargó el usuario de correo?:", process.env.EMAIL_USER ? "SÍ" : "NO");
+
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
 
 const authController = require('./controllers/authController');
 const inventarioController = require('./controllers/inventarioController');
@@ -16,9 +19,15 @@ app.use(express.json());
 // 1. Autenticación
 app.post('/api/v1/auth/login', authController.login);
 app.post('/api/v1/auth/register-cliente', authController.registerCliente);
+app.post('/api/v1/auth/recuperar', authController.recuperarContrasena);
+app.post('/api/auth/recuperar', authController.recuperarContrasena);
+app.post('/api/v1/auth/restablecer', authController.restablecerContrasena);
+app.post('/api/auth/restablecer', authController.restablecerContrasena);
 
 // 2. Consulta de Inventario
 app.get('/api/v1/inventario/racks', inventarioController.getRacks);
+app.get('/api/v1/inventario/movimientos', inventarioController.getMovimientos);
+app.get('/api/inventario/movimientos', inventarioController.getMovimientos);
 
 // 3. Acciones Transaccionales de Inventario
 app.post('/api/v1/inventario/comprar', inventarioController.comprar);
@@ -39,6 +48,10 @@ app.get('/api/v1/inventario/pedidos-pendientes', inventarioController.getPedidos
 app.post('/api/v1/inventario/solicitar-abasto-inventario', inventarioController.solicitarAbastoInventario);
 app.get('/api/v1/inventario/solicitudes-abasto', inventarioController.getSolicitudesAbasto);
 app.post('/api/v1/inventario/compra-abastecimiento', inventarioController.compraAbastecimiento);
+app.get('/api/v1/pedidos/:id/exportar-pdf', inventarioController.exportarPDF);
+app.get('/api/pedidos/:id/exportar-pdf', inventarioController.exportarPDF);
+app.get('/api/v1/inventario/movimientos/:id/exportar-pdf', inventarioController.exportarMovimientoPDF);
+app.get('/api/inventario/movimientos/:id/exportar-pdf', inventarioController.exportarMovimientoPDF);
 
 // 4. Módulo de Administración (Solo Rol 5)
 app.get('/api/v1/admin/usuarios', inventarioController.getUsuarios);

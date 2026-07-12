@@ -1,5 +1,7 @@
 const pool = require('../db');
 const bcrypt = require('bcryptjs');
+const PDFDocument = require('pdfkit');
+const nodemailer = require('nodemailer');
 
 // Helper to verify user existence and role
 async function verifyUserRole(connection, usuario_id, allowedRoles) {
@@ -29,6 +31,103 @@ async function verifyUserRole(connection, usuario_id, allowedRoles) {
 
   return userRol;
 }
+
+// Helper to generate PDF Invoice Buffer
+const generatePDFBuffer = (order, items) => {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 50 });
+      const buffers = [];
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => {
+        resolve(Buffer.concat(buffers));
+      });
+      doc.on('error', (err) => reject(err));
+
+      const formatColones = (num) => `₡${parseFloat(num || 0).toLocaleString('es-CR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
+      // Header
+      doc.fillColor('#1C2541').rect(0, 0, 612, 100).fill();
+      doc.fillColor('#FFFFFF')
+         .fontSize(22)
+         .text('WMS INVENTARIO', 50, 30, { align: 'left', wordBreak: false })
+         .fontSize(10)
+         .text('Sistema de Gestión de Almacén Oficial', 50, 58);
+
+      doc.fontSize(12)
+         .text('COMPROBANTE DE COMPRA', 300, 30, { align: 'right' })
+         .fontSize(14)
+         .font('Helvetica-Bold')
+         .text(`Pedido #${order.id}`, 300, 50, { align: 'right' })
+         .font('Helvetica');
+
+      doc.moveDown(4);
+
+      // Order Info Box
+      doc.fillColor('#000000');
+      const startY = 130;
+      doc.fontSize(10).font('Helvetica-Bold').text('CLIENTE:', 50, startY);
+      doc.font('Helvetica').text(`${order.cliente_nombre || 'Cliente General'}`, 130, startY);
+      doc.fontSize(10).font('Helvetica-Bold').text('EMAIL:', 50, startY + 18);
+      doc.font('Helvetica').text(`${order.cliente_email || '-'}`, 130, startY + 18);
+      doc.fontSize(10).font('Helvetica-Bold').text('FECHA:', 50, startY + 36);
+      doc.font('Helvetica').text(`${new Date(order.fecha).toLocaleString('es-CR')}`, 130, startY + 36);
+
+      doc.fontSize(10).font('Helvetica-Bold').text('TIPO ENTREGA:', 320, startY);
+      doc.font('Helvetica').text(`${order.tipo_entrega || 'Sucursal'}`, 410, startY);
+      doc.fontSize(10).font('Helvetica-Bold').text('ESTADO:', 320, startY + 18);
+      doc.font('Helvetica').text(`${order.estado || 'Pendiente'}`, 410, startY + 18);
+
+      // Draw horizontal line
+      doc.strokeColor('#CCCCCC').lineWidth(1).moveTo(50, startY + 60).lineTo(562, startY + 60).stroke();
+
+      // Articles Table
+      let currentY = startY + 80;
+      doc.fillColor('#F2F2F2').rect(50, currentY, 512, 22).fill();
+      doc.fillColor('#1C2541').font('Helvetica-Bold').fontSize(9);
+      doc.text('Artículo', 60, currentY + 6);
+      doc.text('Cant.', 320, currentY + 6, { width: 50, align: 'center' });
+      doc.text('Precio Unit.', 380, currentY + 6, { width: 80, align: 'right' });
+      doc.text('Subtotal', 470, currentY + 6, { width: 80, align: 'right' });
+
+      doc.font('Helvetica').fillColor('#333333');
+      currentY += 22;
+
+      for (const item of items) {
+        doc.text(`${item.nombre}`, 60, currentY + 6);
+        doc.text(`${item.cantidad}`, 320, currentY + 6, { width: 50, align: 'center' });
+        doc.text(`${formatColones(item.precio_unitario)}`, 380, currentY + 6, { width: 80, align: 'right' });
+        doc.text(`${formatColones(item.precio_unitario * item.cantidad)}`, 470, currentY + 6, { width: 80, align: 'right' });
+        currentY += 20;
+      }
+
+      // Summary
+      doc.strokeColor('#CCCCCC').lineWidth(1).moveTo(50, currentY + 10).lineTo(562, currentY + 10).stroke();
+      currentY += 20;
+
+      doc.font('Helvetica-Bold').text('Subtotal:', 380, currentY, { width: 80, align: 'right' });
+      doc.font('Helvetica').text(`${formatColones(order.subtotal)}`, 470, currentY, { width: 80, align: 'right' });
+      
+      currentY += 16;
+      doc.font('Helvetica-Bold').text('IVA (13%):', 380, currentY, { width: 80, align: 'right' });
+      doc.font('Helvetica').text(`${formatColones(order.impuesto)}`, 470, currentY, { width: 80, align: 'right' });
+      
+      if (order.costo_envio > 0) {
+        currentY += 16;
+        doc.font('Helvetica-Bold').text('Costo Envío:', 380, currentY, { width: 80, align: 'right' });
+        doc.font('Helvetica').text(`${formatColones(order.costo_envio)}`, 470, currentY, { width: 80, align: 'right' });
+      }
+
+      currentY += 20;
+      doc.font('Helvetica-Bold').fontSize(11).text('Total Final:', 380, currentY, { width: 80, align: 'right' });
+      doc.fontSize(11).text(`${formatColones(order.total)}`, 470, currentY, { width: 80, align: 'right' });
+
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+};
 
 // GET /api/v1/inventario/racks
 exports.getRacks = async (req, res, next) => {
@@ -336,6 +435,17 @@ exports.reabastecer = async (req, res, next) => {
           'UPDATE posiciones_rack SET cantidad_actual = cantidad_actual - ? WHERE id = ?',
           [toDeduct, pos.id]
         );
+        // Record in movimientos_inventario
+        await connection.query(
+          'INSERT INTO movimientos_inventario (articulo_id, usuario_id, tipo_movimiento, cantidad, posicion_origen, posicion_destino) VALUES (?, ?, "REABASTECIMIENTO", ?, ?, ?)',
+          [
+            articulo_id,
+            usuario_id,
+            toDeduct,
+            `${pos.rack_nombre} - Piso ${pos.piso}`,
+            `${targetPos.rack_nombre} - Piso ${targetPos.piso}`
+          ]
+        );
         remainingToDeduct -= toDeduct;
       }
     }
@@ -456,6 +566,16 @@ exports.despachar = async (req, res, next) => {
               'UPDATE posiciones_rack SET cantidad_actual = cantidad_actual - ? WHERE id = ?',
               [toDeduct, pos.id]
             );
+            // Record in movimientos_inventario
+            await connection.query(
+              'INSERT INTO movimientos_inventario (articulo_id, usuario_id, tipo_movimiento, cantidad, posicion_origen, posicion_destino) VALUES (?, ?, "SALIDA", ?, ?, NULL)',
+              [
+                artId,
+                usuario_id,
+                toDeduct,
+                `${pos.rack_nombre} - Piso ${pos.piso}`
+              ]
+            );
             remainingToDeduct -= toDeduct;
           }
         }
@@ -520,11 +640,23 @@ exports.despachar = async (req, res, next) => {
       for (const pos of positions) {
         if (remainingToDeduct <= 0) break;
         const toDeduct = Math.min(pos.cantidad_actual, remainingToDeduct);
-        await connection.query(
-          'UPDATE posiciones_rack SET cantidad_actual = cantidad_actual - ? WHERE id = ?',
-          [toDeduct, pos.id]
-        );
-        remainingToDeduct -= toDeduct;
+        if (toDeduct > 0) {
+          await connection.query(
+            'UPDATE posiciones_rack SET cantidad_actual = cantidad_actual - ? WHERE id = ?',
+            [toDeduct, pos.id]
+          );
+          // Record in movimientos_inventario
+          await connection.query(
+            'INSERT INTO movimientos_inventario (articulo_id, usuario_id, tipo_movimiento, cantidad, posicion_origen, posicion_destino) VALUES (?, ?, "SALIDA", ?, ?, NULL)',
+            [
+              articulo_id,
+              usuario_id,
+              toDeduct,
+              `${pos.rack_nombre} - Piso ${pos.piso}`
+            ]
+          );
+          remainingToDeduct -= toDeduct;
+        }
       }
 
       await connection.query(
@@ -555,7 +687,14 @@ exports.despachar = async (req, res, next) => {
 
 // POST /api/v1/inventario/ajuste-dano (Exclusivo Rol 4)
 exports.ajusteDano = async (req, res, next) => {
-  const { usuario_id, articulo_id, piso, cantidad } = req.body;
+  const { usuario_id, articulo_id, piso, cantidad, detalle_dano } = req.body;
+
+  if (detalle_dano === undefined || detalle_dano === null || String(detalle_dano).trim() === '') {
+    return res.status(400).json({
+      success: false,
+      message: 'Es obligatorio detallar el motivo por el cual la mercadería se reporta como dañada'
+    });
+  }
 
   if (!articulo_id || piso === undefined || cantidad === undefined) {
     return res.status(400).json({
@@ -625,6 +764,12 @@ exports.ajusteDano = async (req, res, next) => {
     await connection.query(
       'INSERT INTO historial_movimientos (usuario_id, articulo_id, tipo_movimiento, cantidad) VALUES (?, ?, "AJUSTE_DAÑO", ?)',
       [usuario_id, articulo_id, qty]
+    );
+
+    // Record in movimientos_inventario
+    await connection.query(
+      'INSERT INTO movimientos_inventario (articulo_id, usuario_id, tipo_movimiento, cantidad, posicion_origen, posicion_destino, detalle_dano) VALUES (?, ?, "AJUSTE", ?, ?, NULL, ?)',
+      [articulo_id, usuario_id, qty, position.rack_nombre, detalle_dano]
     );
 
     await connection.commit();
@@ -1247,7 +1392,7 @@ exports.eliminarUsuario = async (req, res, next) => {
 
 // POST /api/v1/inventario/crear-pedido (Nuevo Módulo de Cliente/Comprador - Costa Rica)
 exports.crearPedidoCliente = async (req, res, next) => {
-  const { cliente_id, productos, tipo_entrega, telefono_contacto, direccion_envio } = req.body;
+  const { cliente_id, productos, tipo_entrega, telefono_contacto, direccion_envio, enGAM } = req.body;
 
   if (!cliente_id) {
     return res.status(400).json({ success: false, message: 'El cliente_id es requerido' });
@@ -1271,7 +1416,7 @@ exports.crearPedidoCliente = async (req, res, next) => {
     await connection.beginTransaction();
 
     // Validar existencia del cliente
-    const [userRows] = await connection.query('SELECT nombre FROM usuarios WHERE id = ? AND activo = 1', [cliente_id]);
+    const [userRows] = await connection.query('SELECT nombre, email FROM usuarios WHERE id = ? AND activo = 1', [cliente_id]);
     if (userRows.length === 0) {
       return res.status(404).json({ success: false, message: 'Cliente no encontrado o inactivo' });
     }
@@ -1349,16 +1494,30 @@ exports.crearPedidoCliente = async (req, res, next) => {
     }
 
     const impuesto = subtotal * 0.13;
-    const total = subtotal + impuesto;
+    
+    // Cálculo de costo de envío express para Costa Rica con IVA Incluido
+    let costoEnvio = 0;
+    if (selectedTipoEntrega === 'express') {
+      const esGAM = !!enGAM;
+      costoEnvio = esGAM ? 5000 : 7000;
+      const montoParaBeneficio = subtotal + impuesto;
+      if (esGAM && montoParaBeneficio >= 100000) {
+        costoEnvio = 0;
+      } else if (!esGAM && montoParaBeneficio >= 150000) {
+        costoEnvio = 0;
+      }
+    }
+
+    const totalFinal = subtotal + impuesto + costoEnvio;
 
     // Insertar en la tabla pedidos (poblando tanto campos nuevos como antiguos para compatibilidad)
     const [orderResult] = await connection.query(
       `INSERT INTO pedidos (
-        cliente_id, subtotal, impuesto_iva, impuesto, total, 
+        cliente_id, subtotal, impuesto_iva, impuesto, costo_envio, total, 
         tipo_entrega, direccion_entrega, direccion_envio, telefono_contacto, estado
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pendiente')`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pendiente')`,
       [
-        cliente_id, subtotal, impuesto, impuesto, total,
+        cliente_id, subtotal, impuesto, impuesto, costoEnvio, totalFinal,
         selectedTipoEntrega,
         selectedTipoEntrega === 'express' ? direccion_envio.trim() : null,
         selectedTipoEntrega === 'express' ? direccion_envio.trim() : null,
@@ -1368,7 +1527,7 @@ exports.crearPedidoCliente = async (req, res, next) => {
 
     const pedidoId = orderResult.insertId;
 
-    // Insertar detalles en pedido_detalles y pedido_items para compatibilidad
+    // Insertar detalles en pedido_detalles, pedido_items y detalle_pedido para compatibilidad y Workbench
     for (const item of processedItems) {
       await connection.query(
         'INSERT INTO pedido_detalles (pedido_id, articulo_id, cantidad) VALUES (?, ?, ?)',
@@ -1379,9 +1538,73 @@ exports.crearPedidoCliente = async (req, res, next) => {
         'INSERT INTO pedido_items (pedido_id, articulo_id, cantidad) VALUES (?, ?, ?)',
         [pedidoId, item.articulo_id, item.cantidad]
       );
+
+      await connection.query(
+        'INSERT INTO detalle_pedido (pedido_id, articulo_id, cantidad) VALUES (?, ?, ?)',
+        [pedidoId, item.articulo_id, item.cantidad]
+      );
     }
 
     await connection.commit();
+
+    // Enviar Correo de Confirmación con Factura Adjunta en formato PDF
+    try {
+      console.log(`[Email Despacho] Intentando enviar factura de pedido #${pedidoId} a: ${userRows[0].email}`);
+      
+      let pdfBuffer = null;
+      try {
+        pdfBuffer = await generatePDFBuffer(
+          {
+            id: pedidoId,
+            fecha: new Date(),
+            total: totalFinal,
+            subtotal: subtotal,
+            impuesto: impuesto,
+            costo_envio: costoEnvio,
+            tipo_entrega: selectedTipoEntrega,
+            estado: 'Pendiente',
+            cliente_nombre: userRows[0].nombre,
+            cliente_email: userRows[0].email
+          },
+          processedItems
+        );
+        console.log(`[Email Despacho] PDF Invoice Buffer creado con éxito (${pdfBuffer.length} bytes).`);
+      } catch (pdfErr) {
+        console.error("[Email Despacho] Error crítico al crear el archivo PDF de la factura:", pdfErr);
+      }
+
+      if (pdfBuffer && userRows[0].email) {
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+          }
+        });
+
+        try {
+          const info = await transporter.sendMail({
+            from: `"WMS Inventario" <${process.env.EMAIL_USER}>`,
+            to: userRows[0].email,
+            subject: `Factura de Compra - Pedido #${pedidoId}`,
+            text: `Hola ${userRows[0].nombre},\n\nMuchas gracias por su compra. Adjunto a este correo encontrará el comprobante PDF oficial de su pedido #${pedidoId} por un monto total de ₡${totalFinal.toLocaleString('es-CR')}.\n\nDetalles del despacho:\n- Tipo de entrega: ${selectedTipoEntrega}\n- Estado inicial: Pendiente\n\nSaludos cordiales,\nEl equipo de WMS.`,
+            attachments: [
+              {
+                filename: `Factura_Pedido_${pedidoId}.pdf`,
+                content: pdfBuffer
+              }
+            ]
+          });
+          console.log(`[Email Despacho] Correo enviado exitosamente con Nodemailer: ${info.messageId}`);
+        } catch (mailErr) {
+          console.error("[Email Despacho] Fallo en Nodemailer al llamar a transporter.sendMail():", mailErr);
+        }
+      } else {
+        console.warn("[Email Despacho] No se pudo enviar el correo debido a que no hay PDF generado o no se encontró el email del cliente.");
+      }
+    } catch (outerErr) {
+      console.error("[Email Despacho] Error externo en bloque de correo adjunto:", outerErr);
+    }
 
     return res.status(201).json({
       success: true,
@@ -1389,7 +1612,8 @@ exports.crearPedidoCliente = async (req, res, next) => {
       pedido_id: pedidoId,
       subtotal: subtotal,
       impuesto: impuesto,
-      total: total,
+      costo_envio: costoEnvio,
+      total: totalFinal,
       moneda: '₡ (Colones)',
       detalles: processedItems
     });
@@ -1619,5 +1843,414 @@ exports.getCatalogo = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+// GET /api/v1/inventario/movimientos
+exports.getMovimientos = async (req, res, next) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT 
+        m.id,
+        m.articulo_id,
+        m.usuario_id,
+        m.tipo_movimiento,
+        m.cantidad,
+        m.posicion_origen,
+        m.posicion_destino,
+        m.fecha,
+        m.detalle_dano,
+        a.nombre AS articulo_nombre,
+        u.nombre AS usuario_nombre
+      FROM movimientos_inventario m
+      JOIN articulos a ON m.articulo_id = a.id
+      JOIN usuarios u ON m.usuario_id = u.id
+      ORDER BY m.fecha DESC
+    `);
+
+    return res.status(200).json({
+      success: true,
+      data: rows
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET /api/v1/pedidos/:id/exportar-pdf
+exports.exportarPDF = async (req, res, next) => {
+  const { id } = req.params;
+
+  const connection = await pool.getConnection();
+  try {
+    // 1. Fetch order details
+    const [orders] = await connection.query(`
+      SELECT 
+        p.id,
+        p.fecha_creacion AS fecha,
+        p.total,
+        p.subtotal,
+        p.impuesto,
+        p.tipo_entrega,
+        p.direccion_entrega,
+        p.estado,
+        u_cli.nombre AS cliente_nombre,
+        u_cli.email AS cliente_email,
+        u_ali.nombre AS alistador_nombre
+      FROM pedidos p
+      LEFT JOIN usuarios u_cli ON p.cliente_id = u_cli.id
+      LEFT JOIN usuarios u_ali ON p.alistador_id = u_ali.id
+      WHERE p.id = ?
+    `, [id]);
+
+    if (orders.length === 0) {
+      return res.status(404).json({ success: false, message: 'Pedido no encontrado' });
+    }
+
+    const order = orders[0];
+
+    // 2. Fetch order items
+    const [items] = await connection.query(`
+      SELECT 
+        pi.cantidad,
+        a.nombre AS articulo_nombre,
+        a.precio_base
+      FROM pedido_items pi
+      JOIN articulos a ON pi.articulo_id = a.id
+      WHERE pi.pedido_id = ?
+    `, [id]);
+
+    // 3. Generate PDF
+    const doc = new PDFDocument({ margin: 50 });
+
+    // Set response headers for download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="Comprobante_Despacho_${id}.pdf"`);
+
+    // Stream PDF directly to response
+    doc.pipe(res);
+
+    // Styling helpers
+    const formatColones = (num) => `¢${parseFloat(num || 0).toLocaleString('es-CR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    // --- Header ---
+    doc.fillColor('#1C2541')
+       .rect(0, 0, 612, 100) // Dark blue background header
+       .fill();
+
+    doc.fillColor('#FFFFFF')
+       .fontSize(22)
+       .text('WMS INVENTARIO', 50, 30, { align: 'left', wordBreak: false })
+       .fontSize(10)
+       .text('Sistema de Gestión de Almacén Oficial', 50, 58);
+
+    doc.fontSize(12)
+       .text('COMPROBANTE DE DESPACHO', 300, 30, { align: 'right' })
+       .fontSize(14)
+       .font('Helvetica-Bold')
+       .text(`Pedido #${order.id}`, 300, 50, { align: 'right' })
+       .font('Helvetica');
+
+    doc.moveDown(4);
+
+    // --- Order Info Box ---
+    doc.fillColor('#000000');
+    const startY = 130;
+    
+    // Left column info
+    doc.fontSize(10).font('Helvetica-Bold').text('CLIENTE:', 50, startY);
+    doc.font('Helvetica').text(`${order.cliente_nombre || 'Cliente General'}`, 130, startY);
+    doc.fontSize(10).font('Helvetica-Bold').text('EMAIL:', 50, startY + 18);
+    doc.font('Helvetica').text(`${order.cliente_email || '-'}`, 130, startY + 18);
+    doc.fontSize(10).font('Helvetica-Bold').text('FECHA:', 50, startY + 36);
+    doc.font('Helvetica').text(`${new Date(order.fecha).toLocaleString('es-CR')}`, 130, startY + 36);
+
+    // Right column info
+    doc.fontSize(10).font('Helvetica-Bold').text('ALISTADOR:', 320, startY);
+    doc.font('Helvetica').text(`${order.alistador_nombre || 'Sin Asignar'}`, 410, startY);
+    doc.fontSize(10).font('Helvetica-Bold').text('TIPO ENTREGA:', 320, startY + 18);
+    doc.font('Helvetica').text(`${order.tipo_entrega || 'Sucursal'}`, 410, startY + 18);
+    doc.fontSize(10).font('Helvetica-Bold').text('ESTADO:', 320, startY + 36);
+    doc.font('Helvetica').text(`${order.estado || 'Entregado'}`, 410, startY + 36);
+
+    // Draw horizontal separator line
+    doc.strokeColor('#CCCCCC')
+       .lineWidth(1)
+       .moveTo(50, startY + 60)
+       .lineTo(562, startY + 60)
+       .stroke();
+
+    // --- Articles Table ---
+    let currentY = startY + 80;
+    
+    // Draw table header
+    doc.fillColor('#F2F2F2')
+       .rect(50, currentY, 512, 22)
+       .fill();
+    
+    doc.fillColor('#1C2541')
+       .font('Helvetica-Bold')
+       .fontSize(9);
+
+    doc.text('Artículo', 60, currentY + 6);
+    doc.text('Cant.', 320, currentY + 6, { width: 50, align: 'center' });
+    doc.text('Precio Unit.', 380, currentY + 6, { width: 80, align: 'right' });
+    doc.text('Subtotal', 470, currentY + 6, { width: 80, align: 'right' });
+
+    doc.font('Helvetica').fillColor('#333333');
+    currentY += 22;
+
+    items.forEach((item, index) => {
+      // Background shading for alternate rows
+      if (index % 2 === 1) {
+        doc.fillColor('#FAFAFA')
+           .rect(50, currentY, 512, 20)
+           .fill();
+      }
+
+      const itemSubtotal = item.cantidad * item.precio_base;
+
+      doc.fillColor('#333333')
+         .text(item.articulo_nombre, 60, currentY + 5, { width: 250, height: 12, ellipsis: true });
+      doc.text(item.cantidad.toString(), 320, currentY + 5, { width: 50, align: 'center' });
+      doc.text(formatColones(item.precio_base), 380, currentY + 5, { width: 80, align: 'right' });
+      doc.text(formatColones(itemSubtotal), 470, currentY + 5, { width: 80, align: 'right' });
+
+      // Draw bottom row border
+      doc.strokeColor('#E0E0E0')
+         .lineWidth(0.5)
+         .moveTo(50, currentY + 20)
+         .lineTo(562, currentY + 20)
+         .stroke();
+
+      currentY += 20;
+    });
+
+    // --- Financial Summary Box ---
+    currentY += 15;
+    const summaryX = 350;
+
+    doc.fillColor('#000000').font('Helvetica');
+    doc.text('Monto Subtotal:', summaryX, currentY);
+    doc.text(formatColones(order.subtotal), 470, currentY, { width: 80, align: 'right' });
+
+    currentY += 16;
+    doc.text('Impuesto (13% IVA):', summaryX, currentY);
+    doc.text(formatColones(order.impuesto || (order.subtotal * 0.13)), 470, currentY, { width: 80, align: 'right' });
+
+    currentY += 20;
+    doc.font('Helvetica-Bold').fontSize(11).text('Total Neto:', summaryX, currentY);
+    doc.text(formatColones(order.total), 470, currentY, { width: 80, align: 'right' });
+
+    // --- Signature Section ---
+    const sigY = 620;
+    
+    doc.strokeColor('#999999')
+       .lineWidth(1)
+       .moveTo(70, sigY)
+       .lineTo(230, sigY)
+       .moveTo(380, sigY)
+       .lineTo(540, sigY)
+       .stroke();
+
+    doc.fillColor('#666666')
+       .font('Helvetica')
+       .fontSize(9);
+
+    doc.text('Entregado por (Alistador/Despacho)', 70, sigY + 8, { width: 160, align: 'center' });
+    doc.text('Recibido por (Firma Cliente)', 380, sigY + 8, { width: 160, align: 'center' });
+
+    // End Document
+    doc.end();
+
+  } catch (error) {
+    next(error);
+  } finally {
+    connection.release();
+  }
+};
+
+exports.exportarMovimientoPDF = async (req, res, next) => {
+  const { id } = req.params;
+
+  const connection = await pool.getConnection();
+  try {
+    const [movements] = await connection.query(`
+      SELECT 
+        m.id,
+        m.articulo_id,
+        m.usuario_id,
+        m.tipo_movimiento,
+        m.cantidad,
+        m.posicion_origen,
+        m.posicion_destino,
+        m.fecha,
+        m.detalle_dano,
+        a.nombre AS articulo_nombre,
+        u.nombre AS usuario_nombre
+      FROM movimientos_inventario m
+      JOIN articulos a ON m.articulo_id = a.id
+      JOIN usuarios u ON m.usuario_id = u.id
+      WHERE m.id = ?
+    `, [id]);
+
+    if (movements.length === 0) {
+      return res.status(404).json({ success: false, message: 'Movimiento no encontrado' });
+    }
+
+    const mov = movements[0];
+
+    const doc = new PDFDocument({ margin: 50 });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="Comprobante_Ajuste_${id}.pdf"`);
+
+    doc.pipe(res);
+
+    // --- Header ---
+    doc.fillColor('#1C2541')
+       .rect(0, 0, 612, 100) // Dark blue background header
+       .fill();
+
+    doc.fillColor('#FFFFFF')
+       .fontSize(22)
+       .text('WMS INVENTARIO', 50, 30, { align: 'left', wordBreak: false })
+       .fontSize(10)
+       .text('Sistema de Gestión de Almacén Oficial', 50, 58);
+
+    doc.fontSize(12)
+       .text('COMPROBANTE DE AJUSTE DE INVENTARIO', 300, 30, { align: 'right' })
+       .fontSize(14)
+       .font('Helvetica-Bold')
+       .text(`Movimiento #${mov.id}`, 300, 50, { align: 'right' })
+       .font('Helvetica');
+
+    doc.moveDown(4);
+
+    // --- Details Box ---
+    doc.fillColor('#000000');
+    const startY = 130;
+
+    // Left Column
+    doc.fontSize(10).font('Helvetica-Bold').text('TIPO MOVIMIENTO:', 50, startY);
+    doc.font('Helvetica').text(`${mov.tipo_movimiento}`, 160, startY);
+
+    doc.fontSize(10).font('Helvetica-Bold').text('OPERARIO:', 50, startY + 18);
+    doc.font('Helvetica').text(`${mov.usuario_nombre}`, 160, startY + 18);
+
+    doc.fontSize(10).font('Helvetica-Bold').text('FECHA:', 50, startY + 36);
+    doc.font('Helvetica').text(`${new Date(mov.fecha).toLocaleString('es-CR')}`, 160, startY + 36);
+
+    // Right Column
+    doc.fontSize(10).font('Helvetica-Bold').text('UBICACIÓN ORIGEN:', 320, startY);
+    doc.font('Helvetica').text(`${mov.posicion_origen || '-'}`, 440, startY);
+
+    doc.fontSize(10).font('Helvetica-Bold').text('UBICACIÓN DESTINO:', 320, startY + 18);
+    doc.font('Helvetica').text(`${mov.posicion_destino || '-'}`, 440, startY + 18);
+
+    // Draw separator line
+    doc.strokeColor('#CCCCCC')
+       .lineWidth(1)
+       .moveTo(50, startY + 60)
+       .lineTo(562, startY + 60)
+       .stroke();
+
+    // --- Article Details ---
+    let currentY = startY + 80;
+
+    // Draw a box header for article info
+    doc.fillColor('#F2F2F2')
+       .rect(50, currentY, 512, 22)
+       .fill();
+
+    doc.fillColor('#1C2541')
+       .font('Helvetica-Bold')
+       .fontSize(10);
+
+    doc.text('Artículo Afectado', 60, currentY + 6);
+    doc.text('Cantidad Ajustada', 420, currentY + 6, { width: 130, align: 'right' });
+
+    doc.font('Helvetica').fillColor('#333333');
+    currentY += 22;
+
+    // Item row
+    doc.text(mov.articulo_nombre, 60, currentY + 8, { width: 340 });
+    doc.font('Helvetica-Bold')
+       .text(`${mov.cantidad} Uds`, 420, currentY + 8, { width: 130, align: 'right' });
+
+    doc.strokeColor('#E0E0E0')
+       .lineWidth(0.5)
+       .moveTo(50, currentY + 24)
+       .lineTo(562, currentY + 24)
+       .stroke();
+
+    currentY += 40;
+
+    // --- Damage / Detail Section ---
+    if (mov.tipo_movimiento === 'AJUSTE' || mov.detalle_dano) {
+      doc.fillColor('#FDF0F0')
+         .rect(50, currentY, 512, 60)
+         .fill();
+
+      doc.strokeColor('#FFD2D2')
+         .lineWidth(1)
+         .rect(50, currentY, 512, 60)
+         .stroke();
+
+      doc.fillColor('#D62828')
+         .font('Helvetica-Bold')
+         .fontSize(10)
+         .text('DETALLE DEL DAÑO / OBSERVACIONES:', 60, currentY + 10);
+
+      doc.fillColor('#333333')
+         .font('Helvetica')
+         .fontSize(9.5)
+         .text(mov.detalle_dano || 'No se especificaron detalles del daño.', 60, currentY + 24, { width: 490 });
+    } else {
+      // General detail if present
+      doc.fillColor('#F7F7F7')
+         .rect(50, currentY, 512, 50)
+         .fill();
+
+      doc.strokeColor('#E0E0E0')
+         .lineWidth(1)
+         .rect(50, currentY, 512, 50)
+         .stroke();
+
+      doc.fillColor('#1C2541')
+         .font('Helvetica-Bold')
+         .fontSize(10)
+         .text('DETALLE / OBSERVACIONES DE AJUSTE:', 60, currentY + 10);
+
+      doc.fillColor('#333333')
+         .font('Helvetica')
+         .fontSize(9.5)
+         .text(mov.detalle_dano || 'Ajuste general de stock.', 60, currentY + 24, { width: 490 });
+    }
+
+    // --- Signature Section ---
+    const sigY = 620;
+
+    doc.strokeColor('#999999')
+       .lineWidth(1)
+       .moveTo(70, sigY)
+       .lineTo(230, sigY)
+       .moveTo(380, sigY)
+       .lineTo(540, sigY)
+       .stroke();
+
+    doc.fillColor('#666666')
+       .font('Helvetica')
+       .fontSize(9);
+
+    doc.text('Operario Responsable', 70, sigY + 8, { width: 160, align: 'center' });
+    doc.text('Firma Autorizada WMS', 380, sigY + 8, { width: 160, align: 'center' });
+
+    doc.end();
+
+  } catch (error) {
+    next(error);
+  } finally {
+    connection.release();
   }
 };
