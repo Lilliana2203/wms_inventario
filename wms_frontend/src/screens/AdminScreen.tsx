@@ -38,6 +38,20 @@ interface GlobalOrder {
   fecha_creacion: string;
 }
 
+interface Movimiento {
+  id: number;
+  articulo_id: number;
+  usuario_id: number;
+  tipo_movimiento: 'ENTRADA' | 'SALIDA' | 'REABASTECIMIENTO' | 'AJUSTE';
+  cantidad: number;
+  posicion_origen: string | null;
+  posicion_destino: string | null;
+  fecha: string;
+  articulo_nombre: string;
+  usuario_nombre: string;
+  detalle_dano?: string | null;
+}
+
 interface WebDeleteButtonProps {
   onPress: () => void;
   label: string;
@@ -67,12 +81,13 @@ export default function AdminScreen() {
   const { user, logout } = useAuth();
   const { colors } = useTheme();
   const themeStyles = getThemeOverrides(colors);
-  const [activeTab, setActiveTab] = useState<'usuarios' | 'pedidos'>('usuarios');
+  const [activeTab, setActiveTab] = useState<'usuarios' | 'pedidos' | 'movimientos'>('usuarios');
   const [activeOrderSubTab, setActiveOrderSubTab] = useState<'pendientes' | 'despachados'>('pendientes');
 
   // State lists
   const [usersList, setUsersList] = useState<UserItem[]>([]);
   const [ordersList, setOrdersList] = useState<GlobalOrder[]>([]);
+  const [movimientosList, setMovimientosList] = useState<Movimiento[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
@@ -92,9 +107,10 @@ export default function AdminScreen() {
   const fetchData = useCallback(async () => {
     if (!user) return;
     try {
-      const [usersRes, ordersRes] = await Promise.all([
+      const [usersRes, ordersRes, movsRes] = await Promise.all([
         apiCall<UserItem[]>(`/admin/usuarios?requester_id=${user.id}`, 'GET'),
-        apiCall<GlobalOrder[]>(`/admin/pedidos-global?requester_id=${user.id}`, 'GET')
+        apiCall<GlobalOrder[]>(`/admin/pedidos-global?requester_id=${user.id}`, 'GET'),
+        apiCall<Movimiento[]>('/inventario/movimientos', 'GET')
       ]);
 
       if (usersRes.success && usersRes.data) {
@@ -102,6 +118,9 @@ export default function AdminScreen() {
       }
       if (ordersRes.success && ordersRes.data) {
         setOrdersList(ordersRes.data);
+      }
+      if (movsRes.success && movsRes.data) {
+        setMovimientosList(movsRes.data);
       }
     } catch (e: any) {
       console.error('Error al cargar datos de administración:', e.message);
@@ -247,6 +266,14 @@ export default function AdminScreen() {
     });
   };
 
+  const handleExportMovimientoPDF = (movimientoId: number) => {
+    const pdfUrl = `${BASE_URL}/inventario/movimientos/${movimientoId}/exportar-pdf`;
+    Linking.openURL(pdfUrl).catch((err) => {
+      console.error('Error opening Movement PDF URL:', err);
+      Alert.alert('Error', 'No se pudo abrir el enlace para descargar el PDF de movimiento');
+    });
+  };
+
   if (isLoading && !refreshing) {
     return (
       <View style={[styles.loadingContainer, themeStyles.loadingContainer]}>
@@ -297,6 +324,18 @@ export default function AdminScreen() {
         >
           <Text style={[styles.tabText, activeTab === 'pedidos' && styles.tabTextActive]}>
             Historial de Pedidos ({ordersList.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'movimientos' && styles.tabButtonActive]}
+          onPress={() => {
+            setActiveTab('movimientos');
+            setErrorMsg(null);
+            setSuccessMsg(null);
+          }}
+        >
+          <Text style={[styles.tabText, activeTab === 'movimientos' && styles.tabTextActive]}>
+            Movimientos ({movimientosList.length})
           </Text>
         </TouchableOpacity>
       </View>
@@ -591,7 +630,7 @@ export default function AdminScreen() {
                 </ScrollView>
               </View>
             </View>
-          ) : (
+          ) : activeTab === 'pedidos' ? (
             /* Orders Master History View */
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Registro Global de Órdenes</Text>
@@ -693,6 +732,93 @@ export default function AdminScreen() {
                           </View>
                         </View>
                       ))
+                  )}
+                </View>
+              </ScrollView>
+            </View>
+          ) : (
+            /* Movements History View */
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Historial de Movimientos de Inventario</Text>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                <View style={styles.table}>
+                  <View style={styles.tableHeader}>
+                    <Text style={[styles.tableHeaderCell, { width: 60 }]}>ID</Text>
+                    <Text style={[styles.tableHeaderCell, { width: 140 }]}>Artículo</Text>
+                    <Text style={[styles.tableHeaderCell, { width: 100 }]}>Operario</Text>
+                    <Text style={[styles.tableHeaderCell, { width: 110 }]}>Tipo</Text>
+                    <Text style={[styles.tableHeaderCell, { width: 80 }]}>Cantidad</Text>
+                    <Text style={[styles.tableHeaderCell, { width: 140 }]}>Ubicación</Text>
+                    <Text style={[styles.tableHeaderCell, { width: 160 }]}>Motivo Daño</Text>
+                    <Text style={[styles.tableHeaderCell, { width: 80 }]}>Descargar</Text>
+                  </View>
+
+                  {movimientosList.length === 0 ? (
+                    <View style={styles.emptyContainer}>
+                      <Text style={styles.emptyText}>No hay movimientos registrados</Text>
+                    </View>
+                  ) : (
+                    movimientosList.map((mov) => {
+                      // Determine positions text
+                      let positionsText = '';
+                      if (mov.posicion_origen && mov.posicion_destino) {
+                        positionsText = `${mov.posicion_origen} ➔ ${mov.posicion_destino}`;
+                      } else if (mov.posicion_origen) {
+                        positionsText = `Origen: ${mov.posicion_origen}`;
+                      } else if (mov.posicion_destino) {
+                        positionsText = `Destino: ${mov.posicion_destino}`;
+                      } else {
+                        positionsText = 'Ajuste general';
+                      }
+
+                      return (
+                        <View key={mov.id} style={styles.tableRow}>
+                          <Text style={[styles.tableCell, { width: 60, color: '#3A86C8', fontWeight: 'bold' }]}>
+                            #{mov.id}
+                          </Text>
+                          <Text style={[styles.tableCell, { width: 140 }]} numberOfLines={2}>
+                            {mov.articulo_nombre}
+                          </Text>
+                          <Text style={[styles.tableCell, { width: 100 }]} numberOfLines={1}>
+                            {mov.usuario_nombre}
+                          </Text>
+                          <View style={[{ width: 110, justifyContent: 'center' }]}>
+                            <View style={[
+                              styles.statusBadge, 
+                              { 
+                                backgroundColor: 
+                                  mov.tipo_movimiento === 'ENTRADA' || mov.tipo_movimiento === 'REABASTECIMIENTO'
+                                    ? '#2A9D8F' 
+                                    : mov.tipo_movimiento === 'SALIDA' 
+                                    ? '#FF3366' 
+                                    : '#E76F51' 
+                              }
+                            ]}>
+                              <Text style={styles.statusBadgeText}>{mov.tipo_movimiento}</Text>
+                            </View>
+                          </View>
+                          <Text style={[styles.tableCell, { width: 80, fontWeight: 'bold' }]}>
+                            {mov.cantidad} uds
+                          </Text>
+                          <Text style={[styles.tableCell, { width: 140 }]} numberOfLines={2}>
+                            {positionsText}
+                          </Text>
+                          <Text style={[styles.tableCell, { width: 160, color: mov.tipo_movimiento === 'AJUSTE' ? '#FF3366' : '#5C6B73', fontWeight: mov.tipo_movimiento === 'AJUSTE' ? 'bold' : 'normal' }]} numberOfLines={2}>
+                            {mov.tipo_movimiento === 'AJUSTE' ? (mov.detalle_dano || '-') : '-'}
+                          </Text>
+                          <View style={[{ width: 80, justifyContent: 'center', alignItems: 'center' }]}>
+                            <TouchableOpacity 
+                              style={styles.pdfButton} 
+                              onPress={() => handleExportMovimientoPDF(mov.id)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.pdfButtonText}>📄 PDF</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })
                   )}
                 </View>
               </ScrollView>

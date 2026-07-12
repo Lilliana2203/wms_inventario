@@ -97,8 +97,29 @@ export default function ComprasScreen({ onNavigateToLogin }: ComprasScreenProps)
     setSuccessMsg(null);
   }, []);
 
+  const showAlert = (title: string, message: string, buttons?: any[]) => {
+    if (Platform.OS === 'web') {
+      if (buttons && buttons.length > 0) {
+        const confirmBtn = buttons.find(b => b.onPress);
+        if (confirmBtn && confirmBtn.text !== "Cancelar" && confirmBtn.text !== "Excellent" && confirmBtn.text !== "Excelente") {
+          const ok = window.confirm(`${title}\n\n${message}`);
+          if (ok && confirmBtn.onPress) {
+            confirmBtn.onPress();
+          }
+        } else {
+          window.alert(`${title}\n\n${message}`);
+        }
+      } else {
+        window.alert(`${title}\n\n${message}`);
+      }
+    } else {
+      Alert.alert(title, message, buttons);
+    }
+  };
+
   const showSecurityAlert = () => {
-    Alert.alert(
+    setErrorMsg("Debes registrarte o iniciar sesión en la web antes de poder realizar una compra");
+    showAlert(
       "Por motivos de seguridad",
       "Debes registrarte o iniciar sesión en la web antes de poder realizar una compra",
       [
@@ -204,12 +225,14 @@ export default function ComprasScreen({ onNavigateToLogin }: ComprasScreenProps)
     }
 
     if (!telefonoContacto.trim()) {
-      setErrorMsg('El teléfono de contacto es obligatorio');
+      setErrorMsg("Por favor, ingrese un número de teléfono de contacto.");
+      showAlert("Campos requeridos", "Por favor, ingrese un número de teléfono de contacto.");
       return;
     }
 
-    if (tipoEntrega === 'Express' && !direccionEnvio.trim()) {
-      setErrorMsg('La dirección de envío es obligatoria para entregas Express');
+    if (tipoEntrega.toLowerCase() === 'express' && !direccionEnvio.trim()) {
+      setErrorMsg("Ha seleccionado envío Express. Por favor, especifique la dirección completa de entrega.");
+      showAlert("Dirección requerida", "Ha seleccionado envío Express. Por favor, especifique la dirección completa de entrega.");
       return;
     }
 
@@ -223,12 +246,12 @@ export default function ComprasScreen({ onNavigateToLogin }: ComprasScreenProps)
     // Simple simulated payment validations
     if (paymentMethod === 'card') {
       if (!cardNumber.trim() || !cardExpiry.trim() || !cardCvv.trim()) {
-        Alert.alert("Campos faltantes", "Por favor ingrese todos los datos de su tarjeta");
+        showAlert("Campos faltantes", "Por favor ingrese todos los datos de su tarjeta");
         return;
       }
     } else {
       if (!paypalEmail.trim()) {
-        Alert.alert("Campos faltantes", "Por favor ingrese su correo electrónico de PayPal");
+        showAlert("Campos faltantes", "Por favor ingrese su correo electrónico de PayPal");
         return;
       }
     }
@@ -253,7 +276,7 @@ export default function ComprasScreen({ onNavigateToLogin }: ComprasScreenProps)
       });
 
       if (response.success) {
-        Alert.alert(
+        showAlert(
           "🎉 Compra Procesada",
           tipoEntrega === 'Express' 
             ? `Pago simulado procesado con éxito.\nSu pedido con ID #${response.pedido_id} ha sido registrado para envío express.`
@@ -588,11 +611,16 @@ export default function ComprasScreen({ onNavigateToLogin }: ComprasScreenProps)
                   </View>
                 </View>
 
+                {errorMsg && (
+                  <View style={[styles.errorContainer, { marginBottom: 12, marginTop: 12 }]}>
+                    <Text style={styles.errorText}>{errorMsg}</Text>
+                  </View>
+                )}
+
                 {/* Place Order Trigger */}
                 <TouchableOpacity
                   style={[styles.button, isSubmitting && styles.buttonDisabled]}
                   onPress={handleOpenCheckout}
-                  disabled={isSubmitting}
                   activeOpacity={0.8}
                 >
                   {isSubmitting ? (

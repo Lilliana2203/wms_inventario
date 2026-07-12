@@ -91,6 +91,7 @@ interface Movimiento {
   fecha: string;
   articulo_nombre: string;
   usuario_nombre: string;
+  detalle_dano?: string | null;
 }
 
 export default function AjustesScreen() {
@@ -109,6 +110,7 @@ export default function AjustesScreen() {
   const [selectedPos, setSelectedPos] = useState<RackPosition | null>(null);
   const [actionType, setActionType] = useState<'ADD' | 'SUB' | null>(null);
   const [transactionQty, setTransactionQty] = useState('');
+  const [damageReason, setDamageReason] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -194,6 +196,7 @@ export default function AjustesScreen() {
     setErrorMsg(null);
     setSuccessMsg(null);
     setTransactionQty('');
+    setDamageReason('');
     setSelectedPos(pos);
     setActionType(type);
     setIsModalOpen(true);
@@ -236,6 +239,11 @@ export default function AjustesScreen() {
       return;
     }
 
+    if (actionType === 'SUB' && (!damageReason || !damageReason.trim())) {
+      setErrorMsg('Es obligatorio detallar el motivo por el cual la mercadería se reporta como dañada');
+      return;
+    }
+
     const artId = ARTICLE_IDS[selectedPos.articulo];
     if (!artId) {
       setErrorMsg('Error de mapeo: artículo no identificado');
@@ -258,7 +266,8 @@ export default function AjustesScreen() {
           usuario_id: user?.id,
           articulo_id: artId,
           piso: selectedPos.piso,
-          cantidad: qty
+          cantidad: qty,
+          detalle_dano: damageReason.trim()
         });
       }
 
@@ -753,6 +762,15 @@ export default function AjustesScreen() {
                       <Text style={styles.detailsTextVal}>{item.usuario_nombre}</Text>
                     </View>
 
+                    {item.tipo_movimiento === 'AJUSTE' && item.detalle_dano ? (
+                      <View style={styles.historyDetailsRow}>
+                        <Text style={styles.detailsTextLabel}>Motivo Daño:</Text>
+                        <Text style={[styles.detailsTextVal, { color: '#EF476F', fontWeight: 'bold' }]}>
+                          {item.detalle_dano}
+                        </Text>
+                      </View>
+                    ) : null}
+
                     <Text style={styles.historyDate}>{dateFormatted}</Text>
                   </View>
                 );
@@ -813,6 +831,23 @@ export default function AjustesScreen() {
                     value={transactionQty}
                     onChangeText={(text) => {
                       setTransactionQty(text);
+                      setErrorMsg(null);
+                    }}
+                    editable={!isSubmitting}
+                  />
+                </View>
+              )}
+
+              {!successMsg && actionType === 'SUB' && (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Motivo del daño</Text>
+                  <TextInput
+                    style={[styles.input, { height: 60, paddingTop: 8, paddingBottom: 8 }]}
+                    placeholder="Ej. Caja golpeada en transporte"
+                    placeholderTextColor="#5C6B73"
+                    value={damageReason}
+                    onChangeText={(text) => {
+                      setDamageReason(text);
                       setErrorMsg(null);
                     }}
                     editable={!isSubmitting}
